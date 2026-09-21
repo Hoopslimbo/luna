@@ -625,8 +625,7 @@ function listenBriefly(ms){
 function loadFail(){
   const msg="I'm sorry, could you say that again?";
   addMsg("luna",msg);
-  setSubtitle(msg);
-  utter(msg,()=>{ listenBriefly(3000); });
+  speak(msg,{chat:false,onDone:()=>{ listenBriefly(3000); }});
 }
 
 // ---------- answer card (image popup while she talks) ----------
@@ -694,8 +693,13 @@ function chime(){ beep(880,0.12,0); beep(1320,0.16,0.12); }
 // speakToken guarantees only the newest utterance ever starts: if a newer
 // speak() arrives while this one is still queued, the older one is dropped
 // instead of starting, getting cut, and restarting (the stutter bug).
+// emojis show in the transcript and subtitles but are never read aloud
+const EMOJI_RE=/[\u{1F000}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}\u{2190}-\u{21FF}\u{2300}-\u{23FF}]/gu;
+function stripEmojis(t){ return String(t||"").replace(EMOJI_RE,"").replace(/[ \t]{2,}/g," ").trim(); }
 let speakToken=0;
-function utter(text,onDone){
+// the words and the voice start together, every time: nothing is displayed
+// until her audio actually begins
+function utter(text,onDone,onStart){
   S.lastSpoken=text;
   if(S.muted){
     // muted: show the caption briefly, then hide it like speech did
@@ -703,14 +707,23 @@ function utter(text,onDone){
     return;
   }
   const my=++speakToken;
+  // onStart fires the moment her audio actually begins — exactly once, and
+  // never for an utterance that got superseded
+  let started=false;
+  const fireStart=()=>{ if(started) return; started=true; if(my===speakToken&&onStart){ try{onStart();}catch(e){} } };
+  setTimeout(fireStart,15000); // backstop: the words never stay hidden forever
   // hard-stop anything current. No resume() here: resuming at this point can
   // briefly revive a paused corpse utterance -> start/stop/restart stutter.
   try{ if(speechSynthesis.speaking||speechSynthesis.pending) speechSynthesis.cancel(); }catch(e){}
   clearInterval(S.resumeTimer); clearTimeout(S.speechWatch);
-  const u=new SpeechSynthesisUtterance(text);
+  const vtext=stripEmojis(text); // what she actually says out loud (no emojis)
+  if(!vtext){ fireStart(); if(onDone)onDone(); pokeDock(); return; }
+  const u=new SpeechSynthesisUtterance(vtext);
   const v=pickVoice(); if(v) u.voice=v;
   u.rate=1.02; u.pitch=1;
   u.onstart=()=>{
+    fireStart(); // her words appear the moment her voice starts
+    if(my!==speakToken) return;
     S.orbMode="speaking"; S.pulse=1; pokeDock();
     // unstick Chrome's paused-speech bug, but only while actually speaking
     clearInterval(S.resumeTimer);
@@ -718,6 +731,7 @@ function utter(text,onDone){
   };
   u.onboundary=()=>{ S.pulse=1; };           // each spoken word kicks the ring
   const fin=()=>{
+    fireStart(); // safety: words show even if speech errored instantly
     clearInterval(S.resumeTimer); clearTimeout(S.speechWatch);
     if(S.orbMode==="speaking") S.orbMode="idle";
     // 2s follow-up window: she'll hear you without "hey luna"
@@ -727,7 +741,7 @@ function utter(text,onDone){
     if(onDone)onDone(); pokeDock();
   };
   u.onend=fin; u.onerror=fin;
-  const words=text.split(/\s+/).length;
+  const words=vtext.split(/\s+/).length;
   S.ignoreUntil=Date.now()+Math.min(12000,1200+words*380);
   // watchdog: if Chrome leaves an utterance stuck (ring glowing, no audio,
   // no onend), clear it instead of "talking" forever
@@ -743,10 +757,19 @@ function utter(text,onDone){
     try{ speechSynthesis.speak(u); }catch(e){}
   },100);
 }
-function speak(text){
-  addMsg("luna",text);
-  setSubtitle(text);
-  utter(text);
+// she shows the words exactly when she starts saying them — never before.
+// opts: {onDone, chat:false} — chat:false shows only the subtitle (no transcript line)
+function speak(text,opts){
+  text=String(text||""); if(!text.trim()) return;
+  opts=opts||{};
+  let shown=false;
+  function show(){
+    if(shown) return; shown=true;
+    setSubtitle(text);
+    if(opts.chat!==false) addMsg("luna",text);
+  }
+  if(S.muted){ show(); utter(text,opts.onDone); return; }
+  utter(text,opts.onDone,show);
 }
 function setStatus(live, txt){
   statusText.textContent=txt;
@@ -823,7 +846,12 @@ function startListening(){
     if(!S.listening) return;
     // debounce restarts: a failing start() must never spin into a prompt loop
     const now=Date.now();
-    if(now-S.lastRestart<2000) return;
+    if(now-S.lastRestart<2000){
+      // don't just give up: schedule the restart for when the debounce clears
+      clearTimeout(S.restartT);
+      S.restartT=setTimeout(()=>{ if(S.listening){ S.lastRestart=Date.now(); try{ S.recog.start(); }catch(e){} } }, 2000-(now-S.lastRestart)+50);
+      return;
+    }
     S.lastRestart=now;
     try{ r.start(); }catch(err){ setTimeout(()=>{ if(S.listening){ try{S.recog.start();}catch(e2){} } },400); }
   };
@@ -894,7 +922,11 @@ function routeHeard(finals,interim){
   if(m) cancelGen(); // her name breaks through: tell any long job to stop quietly
   const emailHot=!!(S.mail&&S.mail.open);
   const inFollowUp=Date.now()<S.followUpUntil||(emailHot&&!speechSynthesis.speaking);
-  if(!m&&!inFollowUp) return;
+  if(!m&&!inFollowUp){
+    // she just acted but you're still talking: don't drop the rest — hear it as a new command
+    if(Date.now()<(S.recentCmdUntil||0)&&text.replace(/[.,!?…\s]/g,"").length>1){ queueCommand(text); return; }
+    return;
+  }
   // email exit hatch: while the composer is open, "hey luna" (or "luna, ...")
   // forgets the email; anything after it becomes a normal command
   if(emailHot){
@@ -931,7 +963,14 @@ function routeHeard(finals,interim){
 let cmdBuf="", cmdTimer=null;
 function pokeCmdTimer(){
   clearTimeout(cmdTimer);
-  cmdTimer=setTimeout(()=>{ const c=cmdBuf.trim(); cmdBuf=""; S.awaiting=false; if(c) handleCommand(c); },1100);
+  // she listens until you actually stop talking: every new word restarts the
+  // silence timer, and she only acts after a real ~2.5s pause
+  cmdTimer=setTimeout(()=>{
+    const c=cmdBuf.trim(); cmdBuf=""; S.awaiting=false;
+    // just-handled window: if you're still talking, the rest gets heard too
+    S.recentCmdUntil=Date.now()+5000;
+    if(c) handleCommand(c);
+  },2500);
 }
 function queueCommand(t){ cmdBuf=(cmdBuf+" "+t).trim(); pokeCmdTimer(); }
 </script>
@@ -995,9 +1034,10 @@ function handleCommand(raw){
       if(await runGen(()=>tryBriefing(tl,text))) return done();
       if(await runGen(()=>tryTeach(tl,text))) return done();
       if(await runGen(()=>tryWildcard(tl,text))) return done();
-      if(await tryWeb(tl,text)) return done();
       if(await trySlang(tl,text)) return done();
+      // Wikipedia gets first crack at who/what questions — before any web search
       if(await runGen(()=>tryWiki(tl,text))) return done();
+      if(await tryWeb(tl,text)) return done();
       await tryBrain(tl,text);
     }catch(e){ loadFail(); }
     function done(){ S.orbMode="idle"; }
@@ -1557,7 +1597,7 @@ async function conciergeFollowup(tl,text){
       const ans=firstSentences(raw,3);
       showAnswerCard({title:a.name+" vs "+b.name,image:null,text:ans});
       addMsg("luna",ans);
-      setSubtitle(ans); utter(ans,()=>{ if(!S.muted) cardUntilDone(); });
+      speak(ans,{chat:false,onDone:()=>{ if(!S.muted) cardUntilDone(); }});
     }catch(e){ loadFail(); }
     return true;
   }
@@ -1680,7 +1720,7 @@ async function openYouTubeFirst(q){
       '<p style="margin-top:8px"><a href="https://www.youtube.com/watch?v='+hit.id+'" target="_blank" rel="noopener">Open on YouTube</a></p>');
     addMsg("luna","",'Playing the top video'+(hit.title?': <b>'+esc(hit.title)+'</b>':' for <b>'+esc(q)+'</b>')+'. <a href="https://www.youtube.com/watch?v='+hit.id+'" target="_blank" rel="noopener">Open on YouTube</a>');
     const spoken=hit.title?("Playing "+hit.title+"."):("Playing the top video about "+q+".");
-    setSubtitle(spoken); utter(spoken);
+    speak(spoken,{chat:false});
   }else{
     // video API unreachable: fall back to the filtered search (videos only, no Shorts)
     openUrl(searchUrl,"YouTube search","I couldn't pull the video itself, so here are the top results — the first one is the one you want.");
@@ -1696,8 +1736,7 @@ function openYouTubeSearch(q){
   if(w){
     addMsg("luna","",'YouTube results for <b>'+esc(q)+'</b>: <a href="'+url+'" target="_blank" rel="noopener">open</a>');
     const spoken="Pulling up YouTube results for "+q+".";
-    setSubtitle(spoken);
-    utter(spoken);
+    speak(spoken,{chat:false});
   }else{
     openYouTubeWindow(q);
     addMsg("luna","","Heads up: Chrome blocked the new tab, so the video is playing in the window above instead.");
@@ -2034,13 +2073,67 @@ async function answerFromResearch(question,query){
     const brief=firstSentences(ans,3);
     showAnswerCard({title:cap1(query),image:null,text:brief});
     addMsg("luna","", "<b>"+esc(cap1(query))+"</b><br>"+esc(ans));
-    setSubtitle(brief);
-    utter(brief,()=>{ if(!S.muted) cardUntilDone(); });
+    speak(brief,{chat:false,onDone:()=>{ if(!S.muted) cardUntilDone(); }});
   }catch(e){
     loadFail();
   }
   return true;
   }finally{ genEnd(); }
+}
+// first usable image for a topic, via Wikimedia Commons (free, no key, CORS-open)
+async function firstImage(query){
+  const stripped=query.replace(/\s+(from|in|of)\s+the\s+bible\b/i,"").trim();
+  const tries=[query];
+  if(stripped&&stripped.toLowerCase()!==query.toLowerCase()) tries.push(stripped);
+  for(const q of tries){
+    try{
+      const u="https://commons.wikimedia.org/w/api.php?action=query&generator=search"+
+        "&gsrsearch="+encodeURIComponent(q)+"&gsrnamespace=6&gsrlimit=6"+
+        "&prop=imageinfo&iiprop=url%7Csize&iiurlwidth=600&format=json&origin=*";
+      const j=await (await fetch(u)).json();
+      const pages=j&&j.query&&j.query.pages?Object.values(j.query.pages):[];
+      pages.sort((a,b)=>{
+        const bad=t=>/\.(tif|tiff|djvu|pdf)$/i.test(t||"")?1:0;
+        return bad(a.title)-bad(b.title);
+      });
+      for(const p of pages){
+        const ii=((p.imageinfo)||[])[0]||{};
+        const url=ii.thumburl||ii.url;
+        if(url) return url;
+      }
+    }catch(e){}
+  }
+  return null;
+}
+// Wikipedia came up empty: quick web run, first image found, and her own
+// answer in her own words — no raw search dump, no opened tabs
+async function answerWikiFallback(question,query){
+  if(!needWeb()) return true;
+  genStart();
+  try{
+    hideAnswerCard();
+    S.orbMode="thinking";
+    speak("On it — looking that up now.",{chat:false});
+    const parts=await webResearch(query);
+    const img=await firstImage(query);
+    setSubtitle("Putting it together…");
+    const ctx=(parts||[]).join("\n\n").slice(0,4500);
+    const ans=await brainRaw(
+      "The user asked: \""+question+"\". "+
+      (ctx
+        ? "Here is some web research about \""+query+"\":\n\n"+ctx+"\n\nUse it as background."
+        : "I could not pull up solid web research on this, so answer from your own knowledge.")+
+      " Now answer their question briefly (2-4 sentences), in your own words, like you already knew it. Do not say you looked anything up, do not name any websites or sources, and no bullet lists.",
+      "You are "+S.aiName+", a friendly voice assistant. Answer briefly and naturally, as if from your own knowledge.",
+      30000);
+    if(!ans||ans.trim().length<2) throw 0;
+    const brief=firstSentences(ans,3);
+    showAnswerCard({title:cap1(query),image:img,text:brief});
+    addMsg("luna","", "<b>"+esc(cap1(query))+"</b><br>"+esc(ans));
+    speak(brief,{chat:false});
+  }catch(e){ loadFail(); }
+  finally{ genEnd(); }
+  return true;
 }
 async function tryWiki(tl,text){
   let m=tl.match(/^(?:who['’]?s|who is|who are|who was|what['’]?s|what is|what are|what was|what does|tell me about|define|describe|explain|where is|where are)\s+(.+)/);
@@ -2054,17 +2147,16 @@ async function tryWiki(tl,text){
     const w=await wikiLookup(q);
     if(!w){
       // nothing on Wikipedia at all → research the web and explain it herself
-      return await answerFromResearch(text,q);
+      return await answerWikiFallback(text,q);
     }
     if(!w.extract){
       // found a related page but no summary → research the web and explain it herself
-      return await answerFromResearch(text,q);
+      return await answerWikiFallback(text,q);
     }
     const spoken=firstSentences(w.extract,2);
     showAnswerCard({title:w.title,image:w.thumb,text:spoken});
     addMsg("luna",'', "<b>"+esc(w.title)+"</b><br>"+esc(w.extract)+'<br><a href="'+esc(w.link)+'" target="_blank" rel="noopener">Read more on Wikipedia</a>');
-    setSubtitle(spoken);
-    utter(spoken,()=>{ if(!S.muted) cardUntilDone(); });
+    speak(spoken,{chat:false,onDone:()=>{ if(!S.muted) cardUntilDone(); }});
   }catch(e){ loadFail(); }
   return true;
 }
@@ -2143,8 +2235,7 @@ async function tryBrain(tl,text){
     ans=ans.slice(0,600);
     addMsg("luna",ans);
     const spoken=firstSentences(ans,2);
-    setSubtitle(spoken);
-    utter(spoken);
+    speak(spoken,{chat:false});
   }catch(e){ smallTalkFallback(); }
   return true;
 }
