@@ -2218,6 +2218,7 @@ async function tryBrain(tl,text){
       "You can generate images yourself when asked — image creation is built right into you, with prompt enhancement for better quality. If asked how you make images, say in one sentence that you create them yourself; never volunteer any company, API, or model name. "+
       "You have two image engines the user can switch between by voice ('use Stable Horde for images' / 'use Pollinations for images') or in Settings: Pollinations (fast, a few seconds, the default) and Stable Horde (slower, about a minute, community-run GPUs with different models that sometimes render better). If they ask which engine you're using or ask to compare them, name them plainly and describe the tradeoff. "+
       "You can also build simple stylized 3D models right on the device when asked ('generate a 3D model of …') — they're charmingly blocky, not photoreal, and they save to a 3D gallery; 'find a 3D model of …' searches the web for a real one. "+
+      "When the user asks for a 3D model in ANY wording, it is built instantly and shown in a viewer window — never ask what style they want, and never say it will be ready soon or saved later; just confirm once it's built. "+
       "If you genuinely don't know the answer to a factual question, reply with exactly: RESEARCH: <a short search query> — and nothing else. "+
       "If the user wants to buy something or find a place to stay, don't just chat — ask for their budget first (and trip dates for stays), then recommend a short list of the best options with quick pros and cons. "+
       "If they ask you to write an essay, story, steps, or similar, write it as plain text (short paragraphs, simple lists) so it can go in a side window — say you'll put it there. "+
@@ -2331,8 +2332,8 @@ async function tryFiles(tl,text){
     showGallery3D();
     return true;
   }
-  let m3=tl.match(/\bgenerate (a )?3-?d model of (.+)/);
-  if(m3){ gen3D(m3[2].trim()); return true; }
+  let m3=tl.match(/\b(generate|make|build|create)( me)?( a)? 3-?d model(?: of (.+))?/);
+  if(m3){ gen3D((m3[4]||"").trim()); return true; }
   m3=tl.match(/\b(find|search for)( a)? 3-?d model of (.+)/);
   if(m3){ find3DModel(m3[3].trim()); return true; }
   if(/\b(gallery|my images|my pictures|generated images|show.*gallery)\b/.test(tl)){
@@ -2528,16 +2529,19 @@ function showGallery3D(){
     req.onerror=()=>loadFail();
   }catch(e){ loadFail(); }
 }
-function viewModel3D(it){
-  if(!it) return;
-  if(!TH()){ return; }
-  const T=TH();
-  openMini("🧊 "+it.name,
-    "<div id='glview' style='width:100%;height:360px;border-radius:8px;overflow:hidden'></div>"+
+function modelViewerHtml(it){
+  return "<div id='glview' style='width:100%;height:360px;border-radius:8px;overflow:hidden'></div>"+
     "<p style='color:var(--muted);margin-top:8px'>Drag to spin · scroll to zoom. "+
-    (it.kind==="glb" ? "<a href='"+esc(it.data)+"' target='_blank' rel='noopener'>Download .glb</a>" : "Built right on this device.")+"</p>");
+    (it.kind==="glb" ? "<a href='"+esc(it.data)+"' target='_blank' rel='noopener'>Download .glb</a>" : "Built right on this device.")+"</p>";
+}
+function mountModel3D(it){
+  // the mini window (with #glview) is already open — render the model into it
+  if(!it) return;
+  const T=TH();
+  if(!T) return;
   try{ if(window._gl3dCleanup) window._gl3dCleanup(); }catch(e){}
   const el=document.getElementById("glview");
+  if(!el) return;
   const W=el.clientWidth||320,H=360;
   const renderer=new T.WebGLRenderer({antialias:true,alpha:true});
   renderer.setSize(W,H); el.appendChild(renderer.domElement);
@@ -2565,19 +2569,40 @@ function viewModel3D(it){
   (function loop(){ raf=requestAnimationFrame(loop); ctl.update(); renderer.render(scene,cam); })();
   window._gl3dCleanup=()=>{ cancelAnimationFrame(raf); ctl.dispose(); renderer.dispose(); window._gl3dCleanup=null; };
 }
+function viewModel3D(it){
+  if(!it) return;
+  if(!TH()){ return; }
+  openMini("🧊 "+it.name, modelViewerHtml(it));
+  mountModel3D(it);
+}
 const _closeMini3d=closeMini;
 closeMini=function(){ try{ if(window._gl3dCleanup) window._gl3dCleanup(); }catch(e){} _closeMini3d(); };
 /* generate + find */
 function gen3D(prompt){
   if(!TH()){ speak("My 3D builder is still loading — give it a few seconds and ask again."); return; }
-  const recipe=pickBuilder3D(prompt);
-  const name=prompt.length>42?prompt.slice(0,42)+"…":prompt;
+  prompt=String(prompt||"").trim();
+  const recipe=pickBuilder3D(prompt||"surprise");
+  const base=prompt||"surprise sculpture";
+  const name=base.length>42?base.slice(0,42)+"…":base;
   const sayName=recipe==="sculpture"?"an abstract 3D sculpture":"a stylized 3D "+recipe;
-  saveModel3D(name,"proc",recipe,function(id){
-    addMsg("luna","","Built "+esc(sayName)+" of <b>"+esc(name)+"</b> — saved to your 3D gallery.");
-    utter("Built you "+sayName+" of "+prompt+". It's in your 3D gallery — tap the cube button up top to spin it around.");
-    if(id!=null) getModel3D(id,viewModel3D);
-  });
+  // the viewer opens FIRST so you watch it being built — never asks for a
+  // style, never says "it'll be ready soon"
+  openMini("🧊 Building your 3D model…",
+    "<div id='glview' style='width:100%;height:360px;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px'>Building "+esc(sayName)+"… watch it appear.</div>");
+  speak("Building it now — watch the window.");
+  setTimeout(function(){
+    saveModel3D(name,"proc",recipe,function(id){
+      if(id==null){ loadFail(); return; }
+      getModel3D(id,function(it){
+        if(!it){ loadFail(); return; }
+        openMini("🧊 "+it.name, modelViewerHtml(it));
+        mountModel3D(it);
+        addMsg("luna","","Built "+esc(sayName)+" of <b>"+esc(name)+"</b> — saved to your 3D gallery.");
+        utter(prompt?("Done — there's your "+recipe+". It's saved in your 3D gallery — tap the cube button up top to spin it any time.")
+                    :"Done — I built you a surprise abstract sculpture. It's saved in your 3D gallery.");
+      });
+    });
+  },700);
 }
 function find3DModel(q){
   openUrl("https://sketchfab.com/search?q="+encodeURIComponent(q),"3D models: "+q);
