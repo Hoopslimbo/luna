@@ -772,11 +772,11 @@ function utter(text,onDone,onStart){
 function pushHist(w,t){ t=String(t||"").replace(/\s+/g," ").trim().slice(0,150); if(!t) return; S.hist=S.hist||[]; S.hist.push({w:w,t:t}); while(S.hist.length>6) S.hist.shift(); }
 function histPrompt(){
   if(!S.hist||!S.hist.length) return "";
-  return "Recent conversation (you are "+S.aiName+"):\n"+S.hist.map(h=>((h.w==="ai"?S.aiName:(S.name||"User"))+": "+h.t)).join("\n")+"\n\n";
+  return "Recent conversation (you are "+S.aiName+"):\n"+S.hist.map(h=>((h.w==="ai"?"You":(S.name||"User"))+": "+h.t)).join("\n")+"\n\n";
 }
 function speak(text,opts){
   text=String(text||""); if(!text.trim()) return;
-  pushHist("ai",text);
+  if(!(opts&&opts.hist===false)) pushHist("ai",text);
   opts=opts||{};
   let shown=false;
   function show(){
@@ -1009,6 +1009,7 @@ function handleCommand(raw){
   const text=stripFiller(raw.trim().replace(/\s+/g," "));
   if(!text) return;
   addMsg("you",text);
+  pushHist("user",text); // every request recorded once, here — handlers must not re-push
   S.orbMode="thinking";
   const tl=text.toLowerCase();
   closeDoc(); // the writer window stays up only until the next command
@@ -1094,7 +1095,6 @@ async function fetchJoke(topic){
 async function tryJokes(tl,text){
   if(!/(\bjokes?\b|make me laugh|something funny)/.test(tl)) return false;
   if(!needWeb()) return true;
-  pushHist("user",text);
   let joke=null;
   try{
     const topic=jokeTopic(tl);
@@ -1341,7 +1341,7 @@ async function tryWeather(tl,text){
   let m=tl.match(/weather in (.+)/);
   if(m){
     const place=m[1].trim();
-    speak("Looking up the weather in "+place+"…");
+    speak("Looking up the weather in "+place+"…",{hist:false});
     try{
       const g=await geocode(place);
       if(!g){ speak("I couldn't find "+place+". Try another city name."); return true; }
@@ -1364,7 +1364,7 @@ async function tryWeather(tl,text){
     speak("I don't know where you are yet. Say: set my location to, then your city — or ask: weather in, then a city name.");
     return true;
   }
-  speak("Checking the weather…");
+  speak("Checking the weather…",{hist:false});
   try{ speak(await fetchWeather(S.loc.lat,S.loc.lon,S.loc.name)); }
   catch(e){ loadFail(); }
   return true;
@@ -2313,6 +2313,7 @@ async function tryBrain(tl,text){
   setSubtitle("Thinking…"); S.orbMode="thinking";
   try{
     const sys="You are "+S.aiName+", a friendly voice assistant living in a web page on the user's Chromebook. "+
+      "Always speak in first person as \"I\" \u2014 never refer to yourself in the third person: never use your own name about yourself, never \"she\"/\"her\" for yourself. "+
       "You understand Gen Z and Gen Alpha slang perfectly, but you speak mostly in plain, warm, friendly English — a slang word once in a while at most, never full slang sentences. "+
       "Keep every answer short: 1 to 3 sentences, conversational, no bullet lists, no hashtags. "+
       (S.name?("The user's name is "+S.name+". "):"")+
@@ -2327,7 +2328,7 @@ async function tryBrain(tl,text){
       "If they ask you to write an essay, story, steps, or similar, write it as plain text (short paragraphs, simple lists) so it can go in a side window — say you'll put it there. "+
       "If they ask to send an email, don't write it in chat — tell them you'll open the email composer and walk them through it. "+
       "If asked to do something a web page can't do (control the OS, install apps, read arbitrary files), be honest in one sentence and offer what you CAN do instead.";
-    const convo=histPrompt(); pushHist("user",text);
+    const convo=histPrompt();
     let ans=await brainRaw((convo+text).slice(0,1400),sys,20000); // primary brain (fast), pollinations as backup
     ans=ans.replace(/^"+|"+$/g,"");
     if(!ans||ans.length<2) throw 0;
