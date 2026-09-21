@@ -710,15 +710,18 @@ let speakToken=0;
 // until her audio actually begins
 function utter(text,onDone,onStart){
   S.lastSpoken=text;
+  // window auto-close rule: she spoke while a window was open
+  if(anyWindowOpen()) S.winSpoke=true;
   if(S.muted){
     // muted: show the caption briefly, then hide it like speech did
-    setTimeout(()=>{ hideSubtitle(); if(onDone)onDone(); pokeDock(); }, Math.min(4000, 1200+text.split(/\s+/).length*280));
+    setTimeout(()=>{ hideSubtitle(); if(onDone)onDone(); pokeDock(); settleWindowAutoClose(); }, Math.min(4000, 1200+text.split(/\s+/).length*280));
     return;
   }
   const my=++speakToken;
   // onStart fires the moment her audio actually begins — exactly once, and
   // never for an utterance that got superseded
   let started=false;
+  let finished=false; // set in fin(): the utterance fully ended (or errored)
   const fireStart=()=>{ if(started) return; started=true; if(my===speakToken&&onStart){ try{onStart();}catch(e){} } };
   setTimeout(fireStart,15000); // backstop: the words never stay hidden forever
   // hard-stop anything current. No resume() here: resuming at this point can
@@ -740,6 +743,7 @@ function utter(text,onDone,onStart){
   };
   u.onboundary=()=>{ S.pulse=1; };           // each spoken word kicks the ring
   const fin=()=>{
+    finished=true;
     fireStart(); // safety: words show even if speech errored instantly
     clearInterval(S.resumeTimer); clearTimeout(S.speechWatch);
     if(S.orbMode==="speaking") S.orbMode="idle";
@@ -747,6 +751,7 @@ function utter(text,onDone,onStart){
     S.followUpUntil=Date.now()+2000;
     // her subtitles fade out when she stops talking
     hideSubtitle();
+    settleWindowAutoClose(); // window rule: closes when she's done talking
     if(onDone)onDone(); pokeDock();
   };
   u.onend=fin; u.onerror=fin;
@@ -764,6 +769,18 @@ function utter(text,onDone,onStart){
   setTimeout(()=>{
     if(my!==speakToken) return;
     try{ speechSynthesis.speak(u); }catch(e){}
+    // start watchdog: Chrome sometimes swallows an utterance whole — no
+    // onstart, no audio, no onend/onerror (wedged queue). Retry once with a
+    // fresh utterance on the default voice instead of staying silent forever.
+    setTimeout(()=>{
+      if(my!==speakToken||started||finished) return;
+      try{
+        try{ speechSynthesis.cancel(); }catch(e){}
+        const u2=new SpeechSynthesisUtterance(vtext);
+        u2.onstart=u.onstart; u2.onboundary=u.onboundary; u2.onend=fin; u2.onerror=fin;
+        setTimeout(()=>{ if(my===speakToken&&!finished){ try{ speechSynthesis.speak(u2); }catch(e){} } },150);
+      }catch(e){}
+    },2500);
   },100);
 }
 // she shows the words exactly when she starts saying them — never before.
@@ -823,8 +840,15 @@ function startListening(){
       if(e.results[i].isFinal) finals+=t+" "; else interim+=t+" ";
     }
     const heard=(finals+" "+interim).trim();
-    // INTERRUPT: "hey luna" / "luna stop" / "stop" while she's talking stops her cold
-    if(heard && speechSynthesis.speaking && INTERRUPT_RE.test(heard)){
+    const heardFinal=finals.trim();
+    // INTERRUPT while she's talking: the documented way is saying her name
+    // ("hey luna" — honored on interim results for instant response). Bare
+    // stop-words ("stop", "quiet", ...) only count on FINAL results: her own
+    // voice echoing back through the mic used to ghost-match interim
+    // transcripts and kill her answer with zero audible output.
+    const nameHit=WAKE_RE.test(heard);
+    const stopHit=/\bstop\b|\bstop talking\b|\bsh+u*t+\s*up\b|\bquiet\b/i.test(heardFinal);
+    if(heard && speechSynthesis.speaking && (nameHit||stopHit)){
       try{ speechSynthesis.cancel(); }catch(err){}
       speakToken++; // drop anything queued so nothing restarts after the stop
       clearInterval(S.resumeTimer); clearTimeout(S.speechWatch);
@@ -834,6 +858,7 @@ function startListening(){
       // even when her name is in there too
       if(!/\bstop\b|\bsh+u*t+\s*up\b|\bquiet\b/i.test(heard)&&WAKE_RE.test(heard)){
         S.hist=[]; // fresh "hey <name>": new topic, forget the last one
+        closeAllWindows(); // fresh topic: every window closes, even exempt ones
         // "hey luna" while she's talking: stop cold, then just ding and listen — no voice reply
         const hadMail=!!(S.mail&&S.mail.open);
         if(hadMail){ closeMail(); S.mail=null; addMsg("luna","Email scrapped."); }
@@ -1055,6 +1080,8 @@ function handleCommand(raw){
       if(await runGen(()=>tryTeach(tl,text))) return done();
       if(await runGen(()=>tryWildcard(tl,text))) return done();
       if(await trySlang(tl,text)) return done();
+      // list-type questions ("what qualities...", "top 5...", "pros and cons...") get a real list
+      if(await runGen(()=>tryListAnswer(tl,text))) return done();
       // Wikipedia gets first crack at who/what questions — before any web search
       if(await runGen(()=>tryDictionary(tl,text))) return done();
       if(await runGen(()=>tryWiki(tl,text))) return done();
@@ -1603,7 +1630,7 @@ function conciergeCard(){
     '<p class="csub">'+esc(c.subtitle)+' — tap any option to open it in a new tab.</p>'+
     (rows?'<div class="clist">'+rows+'</div>':'<p class="csub" style="margin-top:8px">My recommendation brain didn\'t answer, but the live links below always have current options and prices.</p>')+
     '<p class="clive">Check live prices: '+conciergeLiveLinks(c)+'</p>'+
-    '<p class="ctip">Try "cheaper", "pricier", "show more", "compare 1 and 2", or "open number 3". Prices are estimates — confirm on the listing.</p>');
+    '<p class="ctip">Try "cheaper", "pricier", "show more", "compare 1 and 2", or "open number 3". Prices are estimates — confirm on the listing.</p>', false, true); // reading list: exempt from auto-close
   if(rows) addMsg("luna","",'<b>'+esc(c.title)+'</b> — '+esc(c.subtitle)+'<br>'+c.options.map((o,i)=>(i+1)+". "+esc(o.name)+" ("+esc(o.priceLabel)+")").join("<br>"));
 }
 async function runConcierge(refineNote){
@@ -2137,7 +2164,7 @@ async function answerFromResearch(question,query){
       "The user asked: \""+question+"\". Here is what I found online about \""+query+"\":\n\n"+ctx+"\n\nNow answer their question briefly (2-4 sentences), in your own words, like you already knew it. Do not say you looked anything up, do not name any sources, no bullet lists.",
       "You are "+S.aiName+", a friendly voice assistant. Answer briefly and naturally, as if from your own knowledge.", 25000);
     if(!ans||ans.length<2) throw 0;
-    const brief=firstSentences(ans,3);
+    const brief=firstSentences(ans,3)||ans; // never speak empty: transcript must never outrun the voice
     showAnswerCard({title:cap1(query),image:null,text:brief});
     addMsg("luna","", "<b>"+esc(cap1(query))+"</b><br>"+esc(ans));
     speak(brief,{chat:false,onDone:()=>{ if(!S.muted) cardUntilDone(); }});
@@ -2308,6 +2335,38 @@ function tryPersonality(tl,text){
 function smallTalkFallback(){
   loadFail();
 }
+/* ---------------- list answers: questions that deserve a list get a list ---------------- */
+function isListQuestion(tl){
+  if(/\blist\b/.test(tl)&&/^(list|give|make|show|name|write)\b/.test(tl)) return true;
+  return /\btop\s+\d+\b/.test(tl)
+    || /^what\s+(are|were)\s+(the\s+)?(best|top|worst|most|main|key|common|important|biggest)\b/.test(tl)
+    || /\bqualit(y|ies)\b/.test(tl)||/\btraits?\b/.test(tl)||/\bcharacteristics?\b/.test(tl)
+    || /\breasons?\s+(why|that|for)\b/.test(tl)
+    || /\bways?\s+to\b/.test(tl)
+    || /\btips?\s+(for|on)\b/.test(tl)
+    || /\bexamples?\s+of\b/.test(tl)
+    || /\bpros\s+and\s+cons\b/.test(tl)
+    || /\b(benefits?|advantages?)\s+of\b/.test(tl)
+    || /\bsteps?\s+to\b/.test(tl);
+}
+async function tryListAnswer(tl,text){
+  if(!isListQuestion(tl)) return false;
+  if(!S.webAccess){ smallTalkFallback(); return true; }
+  setSubtitle("Making your list…"); S.orbMode="thinking";
+  try{
+    const raw=await brainRaw(
+      "The user asked: \""+text+"\". Answer with a short list of 4 to 8 items. Format rules: a numbered list, one item per line. Each item starts with a bold lead word or phrase, then a dash, then one short sentence explaining it. No intro paragraph, no conclusion, no bullet points — just the numbered list.",
+      "You write short, punchy lists. Numbered lists only: bold lead-in, dash, one short sentence per item. Nothing else.", 20000);
+    const list=(raw||"").trim();
+    if(list.length<10){ loadFail(); return true; }
+    const shortQ=cap1(text).slice(0,70);
+    openDoc("📋 "+shortQ, mdLite(list), list, true); // reading list: exempt from auto-close
+    addMsg("luna","",'Made you a list — <b>'+esc(shortQ)+'</b>. It\'s in the side window.');
+    speak("Here's your list — it's in the window.");
+  }catch(e){ loadFail(); }
+  return true;
+}
+
 async function tryBrain(tl,text){
   if(!S.webAccess){ smallTalkFallback(); return true; }
   setSubtitle("Thinking…"); S.orbMode="thinking";
@@ -2340,7 +2399,7 @@ async function tryBrain(tl,text){
     }
     ans=ans.slice(0,600);
     addMsg("luna",ans);
-    const spoken=firstSentences(ans,2);
+    const spoken=firstSentences(ans,2)||ans; // never speak empty: transcript must never outrun the voice
     speak(spoken,{chat:false});
   }catch(e){ smallTalkFallback(); }
   return true;
@@ -2390,15 +2449,51 @@ async function tryFileSearch(tl){
 }
 
 /* ---------------- mini windows ---------------- */
-function openMini(title,html,small){
+function openMini(title,html,small,keep){
   $("miniTitle").textContent=title;
   $("miniBody").innerHTML=html;
   $("miniWin").classList.toggle("mini-small",!!small);
+  // keep=1: exempt from the "close when she's done talking" rule —
+  // reading lists (shopping options, etc.) stay up for the user to read/tap
+  if(keep) $("miniWin").dataset.keep="1"; else delete $("miniWin").dataset.keep;
   $("miniWin").classList.remove("hidden");
   syncPopupLayout();
 }
 function closeMini(){ $("miniWin").classList.add("hidden"); syncPopupLayout(); }
 $("miniClose").onclick=closeMini;
+
+/* ---------------- window auto-close rule ----------------
+   If Luna says anything while a window is open, that window closes when she
+   finishes talking. Silent opens stay until the user clicks the X.
+   Exempt: the email composer (mailWin/aboutWin) and windows marked keep
+   (reading lists like shopping options, news, essays, lessons, poems). */
+function winEl(id){ return document.getElementById(id); }
+function anyWindowOpen(){
+  return ["miniWin","docWin","mailWin","aboutWin"].some(id=>{ const e=winEl(id); return e&&!e.classList.contains("hidden"); });
+}
+function closeTransientWindows(){
+  try{ if(window._gl3dCleanup) window._gl3dCleanup(); }catch(e){}
+  ["miniWin","docWin"].forEach(id=>{
+    const e=winEl(id);
+    if(e&&!e.classList.contains("hidden")&&!e.dataset.keep) e.classList.add("hidden");
+  });
+  try{ syncPopupLayout(); }catch(e){}
+}
+function closeAllWindows(){ // explicit fresh-topic reset (wake interrupt): everything closes
+  try{ if(window._gl3dCleanup) window._gl3dCleanup(); }catch(e){}
+  ["miniWin","docWin","mailWin","aboutWin"].forEach(id=>{ const e=winEl(id); if(e) e.classList.add("hidden"); });
+  try{ syncPopupLayout(); }catch(e){}
+}
+function settleWindowAutoClose(){
+  // deferred so chained utterances (her reply continues) don't close early
+  setTimeout(()=>{
+    try{
+      const stillTalking=(typeof speechSynthesis!=="undefined"&&(speechSynthesis.speaking||speechSynthesis.pending))||S.orbMode==="speaking";
+      if(S.winSpoke&&!stillTalking) closeTransientWindows();
+      S.winSpoke=false;
+    }catch(e){}
+  },900);
+}
 
 /* ---------------- files: open anything in a mini window ---------------- */
 function previewFile(f){
@@ -2840,10 +2935,11 @@ function mdLite(t){
   closeList();
   return html||("<p>"+mdInline(String(t))+"</p>");
 }
-function openDoc(title, html, raw){
+function openDoc(title, html, raw, keep){
   $("docTitle").textContent=title;
   $("docBody").innerHTML=html;
   S.docText=raw||"";
+  if(keep) $("docWin").dataset.keep="1"; else delete $("docWin").dataset.keep;
   $("docWin").classList.remove("hidden");
   $("docBody").scrollTop=0;
 }
@@ -2884,7 +2980,7 @@ async function tryWriter(tl,text){
   }catch(e){ loadFail(); return true; }
   raw=raw.trim();
   if(raw.length<10){ loadFail(); return true; }
-  openDoc("\u270D\uFE0F "+cap1(label)+": "+cap1(topic), mdLite(raw), raw);
+  openDoc("\u270D\uFE0F "+cap1(label)+": "+cap1(topic), mdLite(raw), raw, true); // reading list: exempt from auto-close
   speak("Done — it's in the window on the right. It'll stay up until you say hey "+S.aiName+" again, and you can copy it with the copy button.");
   addMsg("luna","","Wrote "+(steps?"a step-by-step guide":plan?"a plan":"a "+kind)+" about <b>"+esc(topic)+"</b> — it's in the side window.");
   return true;
@@ -2924,7 +3020,7 @@ async function techBriefing(n){
   }catch(e){ loadFail(); return true; }
   raw=(raw||"").trim();
   if(raw.length<20){ loadFail(); return true; }
-  openDoc("📰 Today's top "+n+" tech stories", mdLite(raw), raw);
+  openDoc("📰 Today's top "+n+" tech stories", mdLite(raw), raw, true); // reading list: exempt from auto-close
   speak("Done — your briefing is in the window on the right. It'll stay up until you say hey "+S.aiName+" again.");
   addMsg("luna","","Put together a briefing on today's top tech stories — it's in the side window.");
   return true;
@@ -2965,7 +3061,7 @@ async function tryBriefing(tl,text){
   }catch(e){ loadFail(); return true; }
   raw=(raw||"").trim();
   if(raw.length<20){ loadFail(); return true; }
-  openDoc("📰 Top "+n+" "+cap1(topic)+" stories", mdLite(raw), raw);
+  openDoc("📰 Top "+n+" "+cap1(topic)+" stories", mdLite(raw), raw, true); // reading list: exempt from auto-close
   speak("Done — your briefing is in the window on the right.");
   addMsg("luna","","Put together a briefing on "+esc(topic)+" — it's in the side window.");
   return true;
@@ -3011,7 +3107,7 @@ async function teachTopic(topic,minutes){
   }catch(e){ loadFail(); return false; }
   raw=(raw||"").trim();
   if(raw.length<20){ loadFail(); return false; }
-  openDoc("🎓 "+cap1(topic), mdLite(raw), raw);
+  openDoc("🎓 "+cap1(topic), mdLite(raw), raw, true); // reading list: exempt from auto-close
   speak("Done — your lesson on "+topic+" is in the window on the right. The short version: "+firstSentences(raw,2));
   addMsg("luna","","Taught you about <b>"+esc(topic)+"</b> — the lesson is in the side window.");
   return true;
@@ -3056,7 +3152,7 @@ async function tryWildcard(tl,text){
         "You are "+S.aiName+", a playful poet.", 15000);
       const poem=(raw||"").trim();
       if(poem.length<10) throw 0;
-      openDoc("✨ A surprise poem", mdLite(poem), poem);
+      openDoc("✨ A surprise poem", mdLite(poem), poem, true); // reading list: exempt from auto-close
       speak("Done — there's a little poem waiting in the window on the right. Written just now, just for you.");
       addMsg("luna","","Wrote you a surprise poem — it's in the side window.");
     }catch(e){ loadFail(); }
