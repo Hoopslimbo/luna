@@ -1,0 +1,2928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUNA</title>
+<style>
+  :root{
+    --bg:#04060c; --panel:rgba(10,15,28,.92); --line:#1c2a44;
+    --blue:#3fa9ff; --purple:#b06bff; --text:#e8f1ff; --muted:#7d93ad;
+    --green:#3dffa2; --amber:#ffb347;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:radial-gradient(1100px 700px at 50% 30%, #0a1230 0%, var(--bg) 65%);
+    color:var(--text); font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    overflow:hidden; user-select:none;
+  }
+  /* ---------- top buttons ---------- */
+  #menuBtn{
+    position:fixed; top:18px; right:22px; z-index:40;
+    width:46px; height:46px; border-radius:12px; cursor:pointer;
+    background:var(--panel); border:1px solid var(--line); color:var(--text); font-size:22px;
+    transition:.2s; backdrop-filter:blur(6px);
+  }
+  #menuBtn:hover{border-color:var(--blue); box-shadow:0 0 14px rgba(63,169,255,.35);}
+  #statusLine{
+    position:fixed; top:24px; left:88px; z-index:40; display:flex; align-items:center; gap:8px;
+    font-size:12px; letter-spacing:2px; color:var(--muted);
+    background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:8px 14px;
+    backdrop-filter:blur(6px);
+  }
+  #statusDot{width:9px; height:9px; border-radius:50%; background:#5a6a80; transition:.2s;}
+  #statusDot.live{background:var(--green); box-shadow:0 0 10px var(--green); animation:blink 1.6s infinite;}
+  @keyframes blink{50%{opacity:.4;}}
+  /* ---------- stage: classic centered HUD by default ---------- */
+  #stage{
+    position:fixed; inset:0; z-index:30; pointer-events:none;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:20px; gap:6px;
+  }
+  #hudCore{display:flex; flex-direction:column; align-items:center; gap:6px; will-change:transform;}
+  #ringWrap{line-height:0;}
+  #ring{width:min(52vmin,420px); height:min(52vmin,420px); background:transparent; border:none; outline:none; display:block;}
+  #ringWrap{background:transparent; border:none; outline:none;}
+  #subtitle{
+    margin-top:14px; font-size:clamp(16px,2.6vmin,22px); color:#f2f6ff; text-align:center;
+    max-width:min(700px,86vw); min-height:1.6em; line-height:1.5;
+    text-shadow:0 0 18px rgba(120,130,255,.45); font-weight:300;
+    transition:opacity .45s ease;
+  }
+  /* ---------- popups open: HUD morphs to compact, subtitles go thin ---------- */
+  body.popups-open #stage{justify-content:flex-end; align-items:flex-start; padding:0 0 102px 18px;}
+  body.popups-open #hudCore{align-items:flex-start;}
+  body.popups-open #ring{width:150px; height:150px;}
+  body.popups-open #subtitle{
+    position:fixed; left:0; right:0; bottom:58px; z-index:45; margin-top:0; max-width:none; min-height:0;
+    font-size:13px; font-weight:400; color:#cfdcf2; text-align:center; text-shadow:none; line-height:1.4;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    padding:7px 16px; background:rgba(4,8,16,.72); backdrop-filter:blur(6px);
+    border-top:1px solid var(--line);
+    animation:subIn .4s ease;
+  }
+  @keyframes subIn{from{opacity:0;}}
+  /* ---------- dock ---------- */
+  #dock{position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:40; display:flex; flex-direction:column; align-items:center; gap:8px; transition:margin-right .3s, opacity .45s ease, transform .45s ease;}
+  #dock.dock-hidden{opacity:0; pointer-events:none; transform:translateX(-50%) translateY(12px);}
+  body.panel-open #dock{margin-right:320px;}
+  #typeRow{display:flex; gap:8px; width:min(480px,86vw); margin-top:12px; pointer-events:auto;}
+  #typeRow input{
+    flex:1; padding:12px 14px; font-size:15px; border-radius:12px; border:1px solid var(--line);
+    background:rgba(10,19,34,.9); color:var(--text); outline:none;
+  }
+  #typeRow input:focus{border-color:var(--blue);}
+  #typeRow button{
+    padding:12px 16px; font-size:14px; cursor:pointer; border-radius:12px;
+    background:var(--panel); border:1px solid var(--line); color:var(--text); transition:.15s;
+    backdrop-filter:blur(6px);
+  }
+  #typeRow button:hover{border-color:var(--blue); box-shadow:0 0 12px rgba(63,169,255,.3);}
+  body.popups-open #typeRow{width:230px; margin-top:8px;}
+  body.popups-open #typeRow input{padding:8px 10px; font-size:13px;}
+  body.popups-open #typeRow button{padding:8px 10px; font-size:12px;}
+  .dbtn{
+    padding:12px 16px; font-size:14px; cursor:pointer; border-radius:12px;
+    background:var(--panel); border:1px solid var(--line); color:var(--text); transition:.15s;
+    backdrop-filter:blur(6px);
+  }
+  .dbtn:hover{border-color:var(--blue); box-shadow:0 0 12px rgba(63,169,255,.3);}
+  #dockBtns{display:flex; align-items:center; gap:10px;}
+  .dbtn{width:40px; height:40px; border-radius:50%!important; padding:0!important; font-size:16px; display:flex; align-items:center; justify-content:center;}
+  #btnMic{
+    width:58px; height:58px; border-radius:50%; font-size:24px; cursor:pointer; color:#fff;
+    background:radial-gradient(circle at 35% 30%, #1b2a4d, #0b1226);
+    border:2px solid transparent;
+    background-clip:padding-box; position:relative; transition:.2s;
+    box-shadow:0 0 0 2px rgba(63,169,255,.5), 0 0 26px rgba(120,110,255,.35);
+  }
+  #btnMic:hover{box-shadow:0 0 0 2px var(--blue), 0 0 40px rgba(120,110,255,.6);}
+  #btnMic.live{
+    box-shadow:0 0 0 2px var(--green), 0 0 40px rgba(61,255,162,.5);
+    animation:micpulse 1.4s infinite;
+  }
+  /* mic lives top-left, always visible */
+  #micTop{position:fixed; top:14px; left:14px; z-index:60;}
+  @keyframes micpulse{50%{transform:scale(1.06);}}
+  .hidden{display:none!important;}
+  /* ---------- settings panel ---------- */
+  #settings{
+    position:fixed; top:0; right:0; bottom:0; width:320px; z-index:50;
+    background:var(--panel); border-left:1px solid var(--line);
+    transform:translateX(105%); transition:transform .3s ease;
+    overflow-y:auto; padding:20px 0 30px; backdrop-filter:blur(10px);
+  }
+  body.panel-open #settings{transform:translateX(0);}
+  /* transparent click-catcher behind the panel: tap anywhere outside to close */
+  #panelScrim{position:fixed; inset:0; z-index:49; background:transparent;}
+  #settingsHead{display:flex; align-items:center; justify-content:space-between; padding:4px 20px 12px;}
+  #settingsHead h2{font-size:16px; letter-spacing:1px; margin:0; font-weight:600;}
+  #settingsClose{background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer; padding:4px;}
+  #settingsClose:hover{color:var(--text);}
+  .sec{padding:6px 0 4px;}
+  .sec-title{font-size:11px; letter-spacing:2px; color:var(--blue); padding:10px 20px 6px; font-weight:600;}
+  .row{
+    display:flex; align-items:center; gap:12px; padding:11px 20px; cursor:pointer; font-size:14px;
+    border-top:1px solid rgba(28,42,68,.5); transition:.15s;
+  }
+  .row:hover{background:rgba(63,169,255,.06);}
+  .row .ic{font-size:17px; width:24px; text-align:center;}
+  .row .lbl{flex:1;}
+  .row .val{color:var(--blue); font-size:13px;}
+  .row .val.off{color:var(--muted);}
+  .row .chev{color:var(--muted);}
+  .chiprow{display:flex; flex-wrap:wrap; gap:8px; padding:6px 20px 4px;}
+  .chip{
+    background:#0e1a2e; border:1px solid var(--line); border-radius:18px; padding:6px 10px 6px 14px;
+    font-size:13px; display:flex; align-items:center; gap:8px; max-width:100%;
+  }
+  .chip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px;}
+  .chip button{background:none; border:none; color:var(--muted); cursor:pointer; font-size:13px; padding:0 2px;}
+  .chip button:hover{color:#ff6b6b;}
+  .addrow{display:flex; gap:8px; padding:8px 20px;}
+  .addrow input{
+    flex:1; min-width:0; padding:9px 12px; font-size:13px; border-radius:10px;
+    border:1px solid var(--line); background:#0a1322; color:var(--text); outline:none;
+  }
+  .addrow input:focus{border-color:var(--blue);}
+  .addrow button{
+    padding:9px 14px; font-size:13px; border-radius:10px; cursor:pointer;
+    background:linear-gradient(135deg,#123b52,#0e2a3d); border:1px solid var(--blue); color:var(--text);
+  }
+  .empty{padding:4px 20px; font-size:12px; color:var(--muted); font-style:italic;}
+  /* ---------- transcript ---------- */
+  #transcript{
+    position:fixed; left:50%; transform:translateX(-50%); bottom:120px; z-index:45;
+    width:min(620px,92vw); max-height:38vh; display:flex; flex-direction:column;
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    backdrop-filter:blur(10px); overflow:hidden; transition:margin-right .3s;
+  }
+  body.panel-open #transcript{margin-right:320px;}
+  #transcriptHead{display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--line); font-size:13px; letter-spacing:2px; color:var(--muted);}
+  #transcriptHead button{background:none; border:none; color:var(--muted); font-size:18px; cursor:pointer;}
+  #transcriptHead button:hover{color:var(--text);}
+  #transcriptLog{overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px;}
+  .msg{max-width:92%; padding:9px 13px; border-radius:12px; font-size:14px; line-height:1.5; white-space:pre-wrap; word-wrap:break-word;}
+  .msg.you{align-self:flex-end; background:linear-gradient(135deg,#123b52,#0e2a3d); border:1px solid #1e4a63;}
+  .msg.luna{align-self:flex-start; background:rgba(20,32,54,.9); border:1px solid var(--line); border-left:3px solid var(--blue);}
+  .msg .who{font-size:10px; letter-spacing:2px; display:block; margin-bottom:3px; color:var(--blue);}
+  .msg.you .who{color:var(--muted); text-align:right;}
+  .msg a{color:var(--blue);}
+  .msg img{max-width:100%; border-radius:8px; margin-top:8px;}
+  /* ---------- about modal ---------- */
+  #aboutModal{position:fixed; inset:0; z-index:60; background:rgba(2,4,10,.7); display:flex; align-items:center; justify-content:center; padding:20px;}
+  #aboutCard{max-width:440px; background:#0b1220; border:1px solid var(--line); border-radius:16px; padding:26px; font-size:14px; line-height:1.7;}
+  #aboutCard h3{margin:0 0 10px; letter-spacing:3px; color:var(--blue);}
+  #aboutCard button{margin-top:14px; padding:10px 22px; border-radius:10px; cursor:pointer; background:linear-gradient(135deg,#123b52,#0e2a3d); border:1px solid var(--blue); color:var(--text); font-size:14px;}
+  /* ---------- answer card: big, centered ---------- */
+  #answerCard{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:46;
+    width:min(560px,92vw); background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    backdrop-filter:blur(10px); overflow:hidden; text-align:center;
+    box-shadow:0 0 60px rgba(63,169,255,.35);
+    animation:popin .28s ease;
+  }
+  body.panel-open #answerCard{left:calc(50% - 160px);}
+  @keyframes popin{from{opacity:0; transform:translate(-50%,-50%) translateY(-16px) scale(.96);}}
+  #answerCard img{width:100%; max-height:220px; object-fit:cover; display:block; background:#0a1322;}
+  #answerTitle{font-size:16px; font-weight:600; letter-spacing:1px; padding:12px 16px 4px;}
+  #answerText{font-size:13px; line-height:1.55; color:var(--muted); padding:0 16px 16px;}
+  #answerClose{position:absolute; top:8px; right:10px; background:rgba(0,0,0,.45); border:none; color:#fff; width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:14px;}
+  body.light #answerClose{background:rgba(255,255,255,.75); color:#333;}
+  body.light #answerCard{box-shadow:0 0 40px rgba(255,154,60,.3);}
+  /* ---------- mini window (files, images, gallery) ---------- */
+  #miniWin{position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(760px,94vw); max-height:80vh;
+    display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; box-shadow:0 0 60px rgba(63,169,255,.35); z-index:55; overflow:hidden;
+    backdrop-filter:blur(10px); animation:popin .28s ease;}
+  body.panel-open #miniWin{left:calc(50% - 160px);}
+  /* small demo variant: doesn't cover the logo */
+  #miniWin.mini-small{width:min(420px,90vw);}
+  body.light #miniWin{box-shadow:0 0 40px rgba(255,154,60,.3);}
+  /* ---------- side windows: writer + email composer (never move the HUD) ---------- */
+  #docWin,#mailWin{position:fixed; right:18px; top:50%; transform:translateY(-50%); width:min(430px,92vw);
+    max-height:84vh; display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; box-shadow:0 0 60px rgba(63,169,255,.35); z-index:55; overflow:hidden;
+    backdrop-filter:blur(10px); animation:sidein .28s ease;}
+  @keyframes sidein{from{opacity:0; transform:translateY(-50%) translateX(24px);}}
+  body.panel-open #docWin,body.panel-open #mailWin{right:338px;}
+  body.popups-open #docWin,body.popups-open #mailWin{top:auto; bottom:120px; transform:none; max-height:calc(100vh - 280px);}
+  body.light #docWin,body.light #mailWin{box-shadow:0 0 40px rgba(255,154,60,.3);}
+  #docBar,#mailBar{display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:10px 14px; border-bottom:1px solid var(--line); font-size:14px; font-weight:600;}
+  #docBar .winbtns{display:flex; gap:6px;}
+  #docBar button,#mailBar button{background:none; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:2px 6px;}
+  #docBar button:hover,#mailBar button:hover{color:var(--text);}
+  #docBody{padding:16px 18px; overflow-y:auto; font-size:14px; line-height:1.65; user-select:text; -webkit-user-select:text;}
+  #docBody h3,#docBody h4{margin:14px 0 6px; color:var(--blue);}
+  #docBody h3:first-child,#docBody h4:first-child{margin-top:0;}
+  #docBody p{margin:0 0 10px;}
+  #docBody ul,#docBody ol{margin:0 0 10px; padding-left:22px;}
+  #docBody li{margin-bottom:6px;}
+  #mailBody{padding:14px 16px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;}
+  .mfield{display:flex; flex-direction:column; gap:4px;}
+  .mfield label{font-size:11px; letter-spacing:1.5px; color:var(--muted);}
+  .mfield input,.mfield textarea{
+    padding:10px 12px; font-size:14px; border-radius:10px; border:1px solid var(--line);
+    background:rgba(10,19,34,.9); color:var(--text); outline:none; font-family:inherit; resize:vertical;
+  }
+  .mfield input:focus,.mfield textarea:focus{border-color:var(--blue);}
+  body.light .mfield input,body.light .mfield textarea{background:#fffdf6;}
+  #mailHint{font-size:12px; color:var(--muted); line-height:1.5;}
+  #mailHint.err{color:#ff8080;}
+  #mailActions{display:flex; gap:8px; justify-content:flex-end;}
+  #mailActions button{
+    padding:10px 18px; font-size:13px; border-radius:10px; cursor:pointer;
+    background:linear-gradient(135deg,#123b52,#0e2a3d); border:1px solid var(--blue); color:var(--text);
+  }
+  #mailActions button:hover{box-shadow:0 0 12px rgba(63,169,255,.3);}
+  /* attached mini rectangle: "what's it about?" hangs off the email window */
+  #aboutWin{position:fixed; z-index:54; background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--blue);
+    border-radius:0 0 12px 12px; box-shadow:0 18px 40px rgba(0,0,0,.45); padding:10px 12px 12px;
+    animation:sidein .28s ease;}
+  #aboutLabel{font-size:11px; letter-spacing:1.5px; color:var(--muted); margin-bottom:6px;}
+  #aboutWin textarea{width:100%; box-sizing:border-box; padding:10px 12px; font-size:14px; border-radius:8px;
+    border:1px solid var(--line); background:rgba(10,19,34,.9); color:var(--text); outline:none;
+    font-family:inherit; resize:vertical;}
+  #aboutWin textarea:focus{border-color:var(--blue);}
+  body.light #aboutWin textarea{background:#fffdf6;}
+  #aboutFoot{display:flex; justify-content:flex-end; margin-top:8px;}
+  #aboutGo{width:38px; height:38px; border-radius:50%; font-size:17px; cursor:pointer; color:var(--text);
+    background:linear-gradient(135deg,#123b52,#0e2a3d); border:1px solid var(--blue);}
+  #aboutGo:hover{box-shadow:0 0 14px rgba(63,169,255,.5);}
+  /* ---------- concierge: clickable option list ---------- */
+  .clist{display:flex; flex-direction:column; gap:8px; margin:10px 0;}
+  .copt{display:block; padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+    text-decoration:none; color:var(--text); background:rgba(255,255,255,.03);
+    transition:border-color .15s, transform .15s; cursor:pointer;}
+  .copt:hover{border-color:#3fa9ff; transform:translateY(-1px);}
+  .copt-head{display:flex; align-items:center; gap:8px;}
+  .copt-num{display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px;
+    border-radius:50%; background:#3fa9ff; color:#04121f; font-size:12px; font-weight:700; flex:none;}
+  .copt-name{font-weight:700; flex:1;}
+  .copt-price{color:#7ee2a8; font-weight:700; white-space:nowrap;}
+  .copt-why{color:var(--muted); font-size:12px; margin-top:4px;}
+  .copt-con{color:#e08a8a; font-size:12px; margin-top:2px;}
+  .csub{color:var(--muted); margin:0;}
+  .clive{margin:10px 0 4px; color:var(--muted);}
+  .ctip{margin:4px 0 0; color:var(--muted); font-size:12px;}
+  body.light .copt{background:#fffdf6;}
+  body.light .copt:hover{border-color:#ff9a3c;}
+  body.light .copt-num{background:#ff9a3c; color:#fff;}
+  body.light .copt-price{color:#1c7a3d;}
+  #miniBar{display:flex; align-items:center; justify-content:space-between; padding:10px 14px;
+    border-bottom:1px solid var(--line); font-weight:600; font-size:14px; letter-spacing:.5px;}
+  #miniClose{background:none; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:4px;}
+  #miniBody{padding:14px; overflow-y:auto; font-size:13px; line-height:1.55;}
+  #miniBody img{max-width:100%; border-radius:8px;}
+  #miniBody pre{white-space:pre-wrap; font-size:12px; background:rgba(0,0,0,.25); padding:10px; border-radius:8px;}
+  body.light #miniBody pre{background:#f4efe2;}
+  ::-webkit-scrollbar{width:8px;} ::-webkit-scrollbar-thumb{background:#1c2a44; border-radius:4px;}
+  /* ---------- light mode (Solar) ---------- */
+  body.light{--bg:#f2ede1; --panel:rgba(255,255,255,.94); --line:#ddd3bd; --text:#2b2620; --muted:#8a8172;}
+  body.light{background:radial-gradient(1100px 700px at 50% 30%, #fff9e9 0%, #efe8d6 65%);}
+  body.light #subtitle{color:#4a3d28; text-shadow:0 0 18px rgba(255,170,60,.4);}
+  body.light.popups-open #subtitle{background:rgba(255,253,246,.88); text-shadow:none;}
+  body.light .msg.you{background:linear-gradient(135deg,#ffe9c4,#ffdf9e); border-color:#e8c98a;}
+  body.light .msg.luna{background:rgba(255,252,244,.95); border-left-color:#ff9a3c;}
+  body.light .chip{background:#fff8ea;}
+  body.light #typeRow input, body.light .addrow input{background:#fffdf6;}
+  body.light #aboutCard{background:#fffdf6;}
+  body.light #btnMic{background:radial-gradient(circle at 35% 30%, #fff3d9, #ffe3ae); box-shadow:0 0 0 2px rgba(255,154,60,.55), 0 0 26px rgba(255,170,60,.4);}
+  body.light #menuBtn:hover, body.light #typeRow button:hover, body.light .dbtn:hover{border-color:#ff9a3c; box-shadow:0 0 12px rgba(255,154,60,.35);}
+  body.light .row .val{color:#d97c1e;}
+  body.light .sec-title{color:#d97c1e;}
+  @media (max-width:760px){
+    body.panel-open #stage, body.panel-open #dock, body.panel-open #transcript{margin-right:0;}
+    #settings{width:min(320px,88vw);}
+  }
+</style>
+</head>
+<body>
+
+<button id="menuBtn" title="Settings">☰</button>
+<div id="statusLine"><span id="statusDot"></span><span id="statusText">NOT LISTENING</span></div>
+
+<main id="stage">
+  <div id="hudCore">
+    <div id="ringWrap"><canvas id="ring"></canvas></div>
+    <div id="typeRow">
+      <input id="textIn" type="text" placeholder='Type here, e.g. "tell me a joke"' autocomplete="off">
+      <button id="btnAsk">Ask</button>
+    </div>
+  </div>
+  <div id="subtitle">Press the mic, then say “Hey LUNA”.</div>
+</main>
+
+<div id="micTop"><button id="btnMic" title="Start listening">🎤</button></div>
+
+<div id="dock">
+  <div id="dockBtns">
+    <button class="dbtn" id="btnTranscript" title="Transcript">💬</button>
+    <button class="dbtn" id="btnMute" title="Mute voice">🔊</button>
+    <button class="dbtn" id="btnRepeat" title="Repeat last">🔁</button>
+    <button class="dbtn" id="btnAttach" title="Attach file">📎</button>
+  </div>
+</div>
+
+<div id="panelScrim" class="hidden"></div>
+<aside id="settings">
+  <div id="settingsHead"><h2><span id="settingsName">LUNA</span> Settings</h2><button id="settingsClose" title="Close">✕</button></div>
+
+  <div class="sec"><div class="sec-title">PERMISSIONS</div>
+    <div class="row" id="permMic"><span class="ic">🎤</span><span class="lbl">Microphone</span><span class="val" id="permMicVal">Off</span><span class="chev">›</span></div>
+    <div class="row" id="permFile"><span class="ic">📁</span><span class="lbl">File Access</span><span class="val">On</span><span class="chev">›</span></div>
+    <div class="row" id="permWeb"><span class="ic">🌐</span><span class="lbl">Web Access</span><span class="val" id="permWebVal">On</span><span class="chev">›</span></div>
+    <div class="row" id="permSys"><span class="ic">🖥️</span><span class="lbl">System Control</span><span class="val">Ask First</span><span class="chev">›</span></div>
+  </div>
+
+  <div class="sec"><div class="sec-title">APPEARANCE</div>
+    <div class="row" id="themeRow"><span class="ic">🌓</span><span class="lbl">Theme</span><span class="val" id="themeVal">Dark</span><span class="chev">›</span></div>
+  </div>
+
+  <div class="sec"><div class="sec-title">MEMORIES</div>
+    <div id="memList"></div>
+    <div class="addrow"><input id="memIn" placeholder="Add a memory…"><button id="memAdd">Add</button></div>
+  </div>
+
+  <div class="sec"><div class="sec-title">TIMERS</div>
+    <div id="timerList"><div class="empty">No active timers.</div></div>
+  </div>
+
+  <div class="sec"><div class="sec-title">GENERAL</div>
+    <div class="row" id="genVoice"><span class="ic">🎚️</span><span class="lbl">Voice</span><span class="val" id="voiceVal">Female</span><span class="chev">›</span></div>
+    <div class="row" id="genTestVoice"><span class="ic">🔈</span><span class="lbl">Test voice</span><span class="chev">›</span></div>
+    <div class="row" id="genImgEngine"><span class="ic">🎨</span><span class="lbl">Image engine</span><span class="val" id="imgEngineVal">Pollinations</span><span class="chev">›</span></div>
+    <div class="row" id="genTestPopups"><span class="ic">🪟</span><span class="lbl">Test popups</span><span class="chev">›</span></div>
+    <div class="row" id="genAbout"><span class="ic">ℹ️</span><span class="lbl">About LUNA</span><span class="chev">›</span></div>
+  </div>
+</aside>
+
+<div id="transcript" class="hidden">
+  <div id="transcriptHead"><span>TRANSCRIPT</span><button id="transcriptClose" title="Close">✕</button></div>
+  <div id="transcriptLog" aria-live="polite"></div>
+</div>
+
+<div id="aboutModal" class="hidden">
+  <div id="aboutCard">
+    <h3 id="aboutName">LUNA</h3>
+    <div>Your local voice assistant. I live entirely in this file on your Chromebook — nothing you say is sent to a LUNA server.<br><br>
+    Say <b>“Hey LUNA”</b> — or <b>“Hey Solar”</b> when light mode is on — then ask for the weather, Wikipedia lookups, math, timers, notes, or memories. Say <b>“open”</b> to launch websites, YouTube videos, or Google Docs — e.g. “pull up a video of black holes” or “open my doc called essay”.<br><br>
+    Speech recognition and web lookups need an internet connection. Keep this tab open while listening.</div>
+    <button id="aboutClose">Close</button>
+  </div>
+</div>
+
+<div id="answerCard" class="hidden">
+  <button id="answerClose" title="Close">✕</button>
+  <img id="answerImg" class="hidden" alt="">
+  <div id="answerTitle"></div>
+  <div id="answerText"></div>
+</div>
+<div id="miniWin" class="hidden">
+  <div id="miniBar"><span id="miniTitle"></span><button id="miniClose" title="Close">✕</button></div>
+  <div id="miniBody"></div>
+</div>
+<div id="docWin" class="hidden">
+  <div id="docBar"><span id="docTitle"></span><span class="winbtns"><button id="docCopy" title="Copy text">📋</button><button id="docClose" title="Close">✕</button></span></div>
+  <div id="docBody"></div>
+</div>
+<div id="mailWin" class="hidden">
+  <div id="mailBar"><span>✉️ New email</span><button id="mailClose" title="Close">✕</button></div>
+  <div id="mailBody">
+    <div class="mfield" id="mailToRow"><label for="mailTo">TO</label><input id="mailTo" type="text" placeholder="name@example.com" autocomplete="off"></div>
+    <div class="mfield hidden" id="mailSubjectRow"><label for="mailSubject">SUBJECT</label><input id="mailSubject" type="text"></div>
+    <div class="mfield hidden" id="mailMsgRow"><label for="mailMsg">MESSAGE</label><textarea id="mailMsg" rows="7"></textarea></div>
+    <div id="mailHint"></div>
+    <div id="mailActions">
+      <button id="mailNext">Next</button>
+      <button id="mailSend" class="hidden">Send via Gmail</button>
+    </div>
+  </div>
+</div>
+<div id="aboutWin" class="hidden">
+  <div id="aboutLabel">WHAT'S IT ABOUT?</div>
+  <textarea id="mailAbout" rows="3" placeholder="e.g. tell my mom I appreciated dinner last night"></textarea>
+  <div id="aboutFoot"><button id="aboutGo" title="Draft the email">✓</button></div>
+</div>
+
+<input type="file" id="fileIn" class="hidden">
+
+<script>
+"use strict";
+/* ============================================================
+   LUNA — single-file voice assistant (HUD edition).
+   ============================================================ */
+
+// ---------- storage ----------
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("luna_"+k); return v===null? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("luna_"+k, JSON.stringify(v)); }catch(e){} }
+};
+
+// ---------- state ----------
+const S = {
+  listening:false, recog:null, awaiting:false, buffer:"",
+  micOn:false, // soft toggle: the recognition stream stays alive, we just ignore input
+  micStream:null, // held getUserMedia stream: one permission grant per page load
+  micStarting:false, // true while a permission prompt is already up (never stack prompts)
+  lastRestart:0, // debounce for recognition restarts
+  resumeTimer:null, // interval that unsticks Chrome's paused speech while talking
+  speechWatch:null, // watchdog that clears a stuck "speaking" glow
+  followUpUntil:0, // 2s after she speaks: no wake word needed to talk to her
+  ignoreUntil:0, muted: store.get("muted", false),
+  name: store.get("name",""),            // user's name
+  aiName: store.get("aiName","LUNA"),    // assistant's display name
+  voicePref: store.get("voicePref","female"),
+  imgEngine: store.get("imgEngine","pollinations"), // "pollinations" (fast) or "horde" (slower, different models)
+  webAccess: store.get("webAccess", true),
+  theme: store.get("theme","dark"),
+  memories: store.get("memories", []),
+  loc: store.get("loc", null),
+  timers: [], lastSpoken:"", orbMode:"idle", wakeLock:null, pulse:0,
+  gen:0, genCancel:false // gen>0 while she's generating; mic ignores everything but "luna" then
+};
+
+// true while LUNA is in the middle of generating anything
+function generating(){ return (S.gen||0)>0; }
+function genStart(){ S.gen=(S.gen||0)+1; S.genCancel=false; S.orbMode="thinking"; pokeDock(); return S.gen; }
+function genEnd(){ S.gen=Math.max(0,(S.gen||0)-1); if(!S.gen&&S.orbMode==="thinking"){ S.orbMode="idle"; pokeDock(); } }
+// called when the wake word breaks through mid-generation: long jobs check this and stop quietly
+function cancelGen(){ if(generating()) S.genCancel=true; }
+// run an async one-shot job as "generating" so the mic gate stays up until it settles
+async function runGen(fn){ genStart(); try{ return await fn(); }finally{ genEnd(); } }
+
+// ---------- dom ----------
+const $ = id => document.getElementById(id);
+const logEl=$("transcriptLog"), subtitleEl=$("subtitle"),
+      statusText=$("statusText"), statusDot=$("statusDot"),
+      btnMic=$("btnMic"), btnMute=$("btnMute"), btnRepeat=$("btnRepeat"),
+      btnAttach=$("btnAttach"), btnTranscript=$("btnTranscript"),
+      textIn=$("textIn"), btnAsk=$("btnAsk"), typeRow=$("typeRow"), fileIn=$("fileIn"),
+      dockEl=$("dock");
+
+// ---------- dock: shrinks away when LUNA is idle ----------
+// buttons hide a few seconds after she finishes speaking; they come back
+// while she talks, when the mic is tapped, or when the mouse nears the bottom.
+let dockHideT=null;
+function pokeDock(){
+  dockEl.classList.remove("dock-hidden");
+  clearTimeout(dockHideT);
+  dockHideT=setTimeout(()=>{
+    if(S.orbMode==="speaking"||S.awaiting) return;
+    dockEl.classList.add("dock-hidden");
+  },2600);
+}
+document.addEventListener("mousemove",e=>{
+  if(e.clientY>window.innerHeight-110) pokeDock();
+});
+
+// ---------- settings panel ----------
+const menuBtn=$("menuBtn"), settingsClose=$("settingsClose");
+function toggleSettings(force){
+  const open = force!==undefined ? force : !document.body.classList.contains("panel-open");
+  document.body.classList.toggle("panel-open", open);
+  $("panelScrim").classList.toggle("hidden", !open);
+  if(!$("aboutWin").classList.contains("hidden")) setTimeout(placeAbout, 320);
+}
+menuBtn.onclick=()=>toggleSettings();
+settingsClose.onclick=()=>toggleSettings(false);
+$("panelScrim").onclick=()=>toggleSettings(false);
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){ toggleSettings(false); closeMini(); hideAnswerCard(); closeDoc(); }
+});
+if(window.innerWidth>900) document.body.classList.add("panel-open");
+
+// ---------- transcript ----------
+btnTranscript.onclick=()=>$("transcript").classList.toggle("hidden");
+$("transcriptClose").onclick=()=>$("transcript").classList.add("hidden");
+
+// ---------- about ----------
+$("genAbout").onclick=()=>{ $("aboutName").textContent=S.aiName; $("aboutModal").classList.remove("hidden"); };
+$("aboutClose").onclick=()=>$("aboutModal").classList.add("hidden");
+$("aboutModal").addEventListener("click",e=>{ if(e.target.id==="aboutModal") $("aboutModal").classList.add("hidden"); });
+
+// ---------- ring (voice-reactive) ----------
+const ring=$("ring"), rctx=ring.getContext("2d");
+let ringT=0, amp=0;
+function sizeRing(){
+  const css=Math.min(Math.min(window.innerWidth,window.innerHeight)*0.52, 420);
+  const dpr=Math.min(2, window.devicePixelRatio||1);
+  ring.style.width=ring.style.height=css+"px";
+  ring.width=ring.height=Math.round(css*dpr);
+  ring._s=ring.width;
+}
+window.addEventListener("resize", sizeRing);
+sizeRing();
+
+function draw(){
+  ringT+=0.016;
+  const speaking = S.orbMode==="speaking";
+  const target = speaking ? 0.62 : S.listening ? 0.28 : 0.12;
+  amp += (target-amp)*0.07;
+  S.pulse = Math.max(0, S.pulse-0.045);
+  // flicker envelope while speaking — makes the ring feel alive with the voice
+  const fl = speaking ? (0.5+0.5*Math.sin(ringT*21))*(0.5+0.5*Math.sin(ringT*9.7)) : 0;
+  const A = Math.min(1, amp + S.pulse*0.9 + fl*0.38);
+
+  const w=ring._s, cx=w/2, cy=w/2, R=w*0.36;
+  rctx.clearRect(0,0,w,w);
+
+  // theme colors: Solar (light) burns warm, LUNA (dark) glows cool
+  const solar=document.body.classList.contains("light");
+  const c1=solar?"#ff9a3c":"#3fa9ff", c2=solar?"#ffd23c":"#b06bff";
+  const shOuter=solar?"255,150,60":"120,110,255";
+  const shInner=solar?"255,170,80":"150,130,255";
+
+  // faint dotted orbit
+  rctx.save();
+  rctx.strokeStyle=solar?"rgba(255,170,80,0.25)":"rgba(120,140,255,0.16)"; rctx.setLineDash([2,7]); rctx.lineWidth=1.5;
+  rctx.beginPath(); rctx.arc(cx,cy,R+34+Math.sin(ringT*0.8)*6,0,Math.PI*2); rctx.stroke();
+  rctx.restore();
+
+  const rr=R+A*26;
+  const grad=rctx.createLinearGradient(cx-rr,cy-rr,cx+rr,cy+rr);
+  grad.addColorStop(0,c1); grad.addColorStop(1,c2);
+
+  // outer glow ring — reactive
+  rctx.save();
+  rctx.shadowColor="rgba("+shOuter+","+(0.35+A*0.55).toFixed(3)+")";
+  rctx.shadowBlur=18+A*70;
+  rctx.strokeStyle=grad; rctx.lineWidth=3+A*5;
+  rctx.beginPath(); rctx.arc(cx,cy,rr,0,Math.PI*2); rctx.stroke();
+  rctx.restore();
+
+  // inner logo ring — reactive
+  const lr=w*0.125+A*9;
+  rctx.save();
+  rctx.shadowColor="rgba("+shInner+","+(0.4+A*0.5).toFixed(3)+")";
+  rctx.shadowBlur=12+A*30;
+  rctx.strokeStyle=grad; rctx.lineWidth=7;
+  rctx.beginPath(); rctx.arc(cx,cy,lr,0,Math.PI*2); rctx.stroke();
+  rctx.restore();
+
+  // wordmark
+  rctx.fillStyle="#e8f1ff";
+  rctx.font='300 '+Math.round(w*0.072)+'px "Segoe UI",system-ui,sans-serif';
+  rctx.textAlign="center";
+  try{ rctx.letterSpacing="8px"; }catch(e){}
+  rctx.fillText(S.aiName||"LUNA", cx, cy+lr+w*0.095);
+
+  requestAnimationFrame(draw);
+}
+draw();
+
+// ---------- chat / subtitle ----------
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function addMsg(who, text, html){
+  const d=document.createElement("div");
+  d.className="msg "+(who==="you"?"you":"luna");
+  d.innerHTML='<span class="who">'+(who==="you"?"YOU":esc(S.aiName))+"</span>"+(html||esc(text));
+  logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight;
+}
+function setSubtitle(t){ subtitleEl.style.opacity="1"; subtitleEl.textContent=t; }
+function hideSubtitle(){
+  subtitleEl.style.opacity="0";
+  setTimeout(()=>{ if(subtitleEl.style.opacity==="0") subtitleEl.textContent=""; },480);
+}
+// brief listen window (e.g. after a failure): listen for `ms`, then reset
+function listenBriefly(ms){
+  S.awaiting=true; cmdBuf="";
+  S.followUpUntil=Date.now()+ms;
+  clearTimeout(listenBriefly._t);
+  listenBriefly._t=setTimeout(()=>{
+    if(S.awaiting){ S.awaiting=false; S.orbMode="idle"; S.buffer=""; cmdBuf=""; }
+  },ms);
+}
+// uniform failure: say sorry, then give 3s to repeat before resetting
+function loadFail(){
+  const msg="I'm sorry, could you say that again?";
+  addMsg("luna",msg);
+  setSubtitle(msg);
+  utter(msg,()=>{ listenBriefly(3000); });
+}
+
+// ---------- answer card (image popup while she talks) ----------
+let answerHideT=null;
+// when a popup opens/closes, the HUD morphs: big centered logo <-> compact corner logo.
+// FLIP animation: measure first, toggle class, measure last, then animate the difference.
+function syncPopupLayout(){
+  const hud=$("hudCore"); if(!hud) return;
+  const anyOpen=!$("miniWin").classList.contains("hidden")||!$("answerCard").classList.contains("hidden");
+  const isOpen=document.body.classList.contains("popups-open");
+  if(anyOpen===isOpen) return;
+  const first=hud.getBoundingClientRect();
+  document.body.classList.toggle("popups-open",anyOpen);
+  const last=hud.getBoundingClientRect();
+  const dx=first.left-last.left, dy=first.top-last.top;
+  const sx=first.width/Math.max(1,last.width), sy=first.height/Math.max(1,last.height);
+  hud.style.transformOrigin="top left";
+  hud.style.transition="none";
+  hud.style.transform="translate("+dx+"px,"+dy+"px) scale("+sx+","+sy+")";
+  void hud.offsetWidth;
+  hud.style.transition="transform .5s cubic-bezier(.22,.8,.3,1)";
+  hud.style.transform="";
+}
+function showAnswerCard(o){
+  clearTimeout(answerHideT);
+  $("answerTitle").textContent=o.title||"";
+  $("answerText").textContent=o.text||"";
+  const img=$("answerImg");
+  if(o.image){ img.src=o.image; img.classList.remove("hidden"); }
+  else{ img.removeAttribute("src"); img.classList.add("hidden"); }
+  $("answerCard").classList.remove("hidden");
+  syncPopupLayout();
+}
+function hideAnswerCard(){ clearTimeout(answerHideT); $("answerCard").classList.add("hidden"); syncPopupLayout(); }
+$("answerClose").onclick=hideAnswerCard;
+// call when her answer finishes: the card lingers a beat, then closes
+function cardUntilDone(){ clearTimeout(answerHideT); answerHideT=setTimeout(hideAnswerCard,1400); }
+
+// ---------- speech ----------
+function pickVoice(){
+  const vs=speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.toLowerCase().startsWith("en"));
+  const pref=S.voicePref||"female";
+  const re = pref==="female"
+    ? /google us english|samantha|zira|aria|jenny|female|victoria|karen|moira/i
+    : /david|daniel|alex|male|fred|jorge|george/i;
+  return vs.find(v=>re.test(v.name)) || vs[0] || null;
+}
+if("speechSynthesis" in window){ speechSynthesis.onvoiceschanged=()=>{}; pickVoice(); }
+
+function beep(freq,dur,when){
+  try{
+    const C=window.AudioContext||window.webkitAudioContext; if(!C) return;
+    const ctx=beep.ctx||(beep.ctx=new C());
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type="sine"; o.frequency.value=freq;
+    const t=ctx.currentTime+(when||0);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.25,t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+dur+0.05);
+  }catch(e){}
+}
+function chime(){ beep(880,0.12,0); beep(1320,0.16,0.12); }
+
+// low-level utterance: drives the reactive ring via onboundary pulses.
+// speakToken guarantees only the newest utterance ever starts: if a newer
+// speak() arrives while this one is still queued, the older one is dropped
+// instead of starting, getting cut, and restarting (the stutter bug).
+let speakToken=0;
+function utter(text,onDone){
+  S.lastSpoken=text;
+  if(S.muted){
+    // muted: show the caption briefly, then hide it like speech did
+    setTimeout(()=>{ hideSubtitle(); if(onDone)onDone(); pokeDock(); }, Math.min(4000, 1200+text.split(/\s+/).length*280));
+    return;
+  }
+  const my=++speakToken;
+  // hard-stop anything current. No resume() here: resuming at this point can
+  // briefly revive a paused corpse utterance -> start/stop/restart stutter.
+  try{ if(speechSynthesis.speaking||speechSynthesis.pending) speechSynthesis.cancel(); }catch(e){}
+  clearInterval(S.resumeTimer); clearTimeout(S.speechWatch);
+  const u=new SpeechSynthesisUtterance(text);
+  const v=pickVoice(); if(v) u.voice=v;
+  u.rate=1.02; u.pitch=1;
+  u.onstart=()=>{
+    S.orbMode="speaking"; S.pulse=1; pokeDock();
+    // unstick Chrome's paused-speech bug, but only while actually speaking
+    clearInterval(S.resumeTimer);
+    S.resumeTimer=setInterval(()=>{ try{ if(speechSynthesis.paused) speechSynthesis.resume(); }catch(e){} },5000);
+  };
+  u.onboundary=()=>{ S.pulse=1; };           // each spoken word kicks the ring
+  const fin=()=>{
+    clearInterval(S.resumeTimer); clearTimeout(S.speechWatch);
+    if(S.orbMode==="speaking") S.orbMode="idle";
+    // 2s follow-up window: she'll hear you without "hey luna"
+    S.followUpUntil=Date.now()+2000;
+    // her subtitles fade out when she stops talking
+    hideSubtitle();
+    if(onDone)onDone(); pokeDock();
+  };
+  u.onend=fin; u.onerror=fin;
+  const words=text.split(/\s+/).length;
+  S.ignoreUntil=Date.now()+Math.min(12000,1200+words*380);
+  // watchdog: if Chrome leaves an utterance stuck (ring glowing, no audio,
+  // no onend), clear it instead of "talking" forever
+  S.speechWatch=setTimeout(()=>{
+    if(S.orbMode==="speaking"&&my===speakToken){
+      try{ speechSynthesis.cancel(); }catch(e){}
+      S.orbMode="idle"; pokeDock();
+    }
+  },Math.min(30000,6000+words*650));
+  // tiny delay lets Chrome's async cancel() settle before the new voice starts
+  setTimeout(()=>{
+    if(my!==speakToken) return;
+    try{ speechSynthesis.speak(u); }catch(e){}
+  },100);
+}
+function speak(text){
+  addMsg("luna",text);
+  setSubtitle(text);
+  utter(text);
+}
+function setStatus(live, txt){
+  statusText.textContent=txt;
+  statusDot.classList.toggle("live", !!live);
+}
+
+// ---------- wake lock ----------
+async function requestWakeLock(){
+  try{
+    if("wakeLock" in navigator){
+      S.wakeLock=await navigator.wakeLock.request("screen");
+      S.wakeLock.addEventListener("release",()=>{});
+    }
+  }catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"&&S.listening) requestWakeLock();
+});
+
+// ---------- speech recognition ----------
+const WAKE_RE=/\b(?:hey\s+)?(?:lu+na|lo+na|louna|lunar|luner|solar)\b/i;
+// heard while she's mid-sentence → stop talking immediately ("hey luna", "stop", "shhh")
+const INTERRUPT_RE=/\bhey\s+(?:lu+na|lo+na|louna|lunar|luner|solar)\b|\b(?:lu+na|lo+na|louna|lunar|luner|solar)\s+stop\b|\bstop\b|\bstop talking\b|\bsh+u*t+\s*up\b|\bquiet\b/i;
+function startListening(){
+  const R=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!R){ setStatus(false,"NO SPEECH SUPPORT"); speak("Speech recognition isn't supported in this browser."); return; }
+  if(S.listening) return;
+  const r=new R(); S.recog=r;
+  r.continuous=true; r.interimResults=true; r.lang="en-US"; r.maxAlternatives=1;
+  r.onresult=(e)=>{
+    if(S.listening && !S.micOn) return; // mic soft-muted: stream stays alive, input ignored
+    let finals="", interim="";
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) finals+=t+" "; else interim+=t+" ";
+    }
+    const heard=(finals+" "+interim).trim();
+    // INTERRUPT: "hey luna" / "luna stop" / "stop" while she's talking stops her cold
+    if(heard && speechSynthesis.speaking && INTERRUPT_RE.test(heard)){
+      try{ speechSynthesis.cancel(); }catch(err){}
+      speakToken++; // drop anything queued so nothing restarts after the stop
+      clearInterval(S.resumeTimer); clearTimeout(S.speechWatch);
+      cancelGen(); // if she was generating too, tell the job to stop
+      S.orbMode="idle"; S.buffer=""; cmdBuf="";
+      // a stop word ("stop", "luna stop", "shut up") always means silence —
+      // even when her name is in there too
+      if(!/\bstop\b|\bsh+u*t+\s*up\b|\bquiet\b/i.test(heard)&&WAKE_RE.test(heard)){
+        // "hey luna" while she's talking: stop cold, then just ding and listen — no voice reply
+        const hadMail=!!(S.mail&&S.mail.open);
+        if(hadMail){ closeMail(); S.mail=null; addMsg("luna","Email scrapped."); }
+        S.awaiting=true;
+        chime();
+        setTimeout(()=>{ if(S.awaiting){ S.awaiting=false; S.orbMode="idle"; S.buffer=""; } },9000);
+        S.ignoreUntil=Date.now()+1600;
+      }else{
+        // plain "stop": just go quiet, leave the 2s follow-up window open
+        S.awaiting=false;
+        S.followUpUntil=Date.now()+2000;
+        pokeDock();
+      }
+      return;
+    }
+    if(Date.now()<S.ignoreUntil) return;
+    if(finals) S.buffer+=finals;
+    routeHeard(finals,interim);
+  };
+  r.onerror=(e)=>{
+    if(e.error==="not-allowed"||e.error==="service-not-allowed"){
+      stopListening(); setStatus(false,"MIC BLOCKED");
+      speak("Microphone access was blocked. Allow the microphone, then press the mic button.");
+    }else if(e.error==="audio-capture"){ stopListening(); setStatus(false,"NO MICROPHONE"); }
+  };
+  r.onend=()=>{
+    if(!S.listening) return;
+    // debounce restarts: a failing start() must never spin into a prompt loop
+    const now=Date.now();
+    if(now-S.lastRestart<2000) return;
+    S.lastRestart=now;
+    try{ r.start(); }catch(err){ setTimeout(()=>{ if(S.listening){ try{S.recog.start();}catch(e2){} } },400); }
+  };
+  try{
+    r.start();
+    S.listening=true; S.micOn=true; S.awaiting=false; S.buffer="";
+    btnMic.classList.add("live"); btnMic.textContent="⏹";
+    $("permMicVal").textContent="On";
+    setStatus(true,'LISTENING — SAY "HEY '+S.aiName.toUpperCase()+'"');
+    requestWakeLock();
+  }catch(e){ setStatus(false,"MIC ERROR"); }
+}
+// mic button = soft toggle. One getUserMedia stream is held for the whole page
+// session (a single permission grant); after that the button just mutes/unmutes
+// input and speech recognition rides on the already-granted mic.
+async function ensureMicStream(){
+  if(S.micStream) return true;
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) return true;
+    S.micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    return true;
+  }catch(e){
+    setStatus(false,"MIC BLOCKED");
+    speak("Microphone access was blocked. Click the lock icon in the address bar, allow the microphone, then press the mic button.");
+    return false;
+  }
+}
+async function toggleMic(){
+  pokeDock();
+  if(!S.listening){
+    if(S.micStarting) return; // a permission prompt is already up: never stack another
+    S.micStarting=true;
+    try{
+      const ok=await ensureMicStream();
+      if(ok) startListening();
+    }finally{ S.micStarting=false; }
+    return;
+  }
+  S.micOn=!S.micOn;
+  btnMic.classList.toggle("live",S.micOn);
+  btnMic.textContent=S.micOn?"⏹":"🎤";
+  $("permMicVal").textContent=S.micOn?"On":"Off";
+  if(S.micOn) setStatus(true,'LISTENING — SAY "HEY '+S.aiName.toUpperCase()+'"');
+  else{ setStatus(false,"MIC PAUSED — TAP 🎤 TO RESUME"); S.orbMode="idle"; S.awaiting=false; cmdBuf=""; }
+}
+function stopListening(){
+  S.listening=false; S.awaiting=false; S.micOn=false;
+  try{ if(S.recog) S.recog.stop(); }catch(e){}
+  if(S.wakeLock){ try{S.wakeLock.release();}catch(e){} S.wakeLock=null; }
+  btnMic.classList.remove("live"); btnMic.textContent="🎤";
+  $("permMicVal").textContent="Off";
+  setStatus(false,"NOT LISTENING");
+  S.orbMode="idle";
+}
+function routeHeard(finals,interim){
+  const text=(finals+" "+interim).trim();
+  if(!text) return;
+  // still assembling a command? keep gathering until ~1.1s of silence
+  if(S.awaiting||cmdBuf){
+    if(finals.trim()) queueCommand(finals.trim());
+    else if(interim.trim()) pokeCmdTimer();
+    return;
+  }
+  const m=text.match(WAKE_RE);
+  // while she's generating anything, she's deaf to everything except her name —
+  // background chatter is dropped entirely, never buffered, never run
+  if(generating()&&!m) return;
+  if(m) cancelGen(); // her name breaks through: tell any long job to stop quietly
+  const emailHot=!!(S.mail&&S.mail.open);
+  const inFollowUp=Date.now()<S.followUpUntil||(emailHot&&!speechSynthesis.speaking);
+  if(!m&&!inFollowUp) return;
+  // email exit hatch: while the composer is open, "hey luna" (or "luna, ...")
+  // forgets the email; anything after it becomes a normal command
+  if(emailHot){
+    const em=text.match(EMAIL_EXIT_RE);
+    if(em){
+      const rest=text.slice(em.index+em[0].length).trim().replace(/^[.,!?…\s]+/,"");
+      closeMail(); S.mail=null; S.buffer=""; cmdBuf="";
+      S.orbMode="heard"; chime(); pokeDock();
+      if(rest){ queueCommand(rest); }
+      else{
+        // "hey luna" with the composer open: scrap it, ding, and listen — no voice reply
+        addMsg("luna","Email scrapped.");
+        S.awaiting=true;
+        setTimeout(()=>{ if(S.awaiting){ S.awaiting=false; S.orbMode="idle"; S.buffer=""; } },9000);
+        S.ignoreUntil=Date.now()+1400;
+      }
+      return;
+    }
+  }
+  // wake word heard inside the follow-up window: refresh the window
+  if(m) S.followUpUntil=Date.now()+2000;
+  const after=m?text.slice(m.index+m[0].length).trim():text;
+  S.orbMode="heard"; chime(); pokeDock();
+  if(after.replace(/[.,!?…\s]/g,"").length>1){ queueCommand(after); }
+  else{
+    // wake word alone: just ding and listen — no voice reply
+    S.awaiting=true; cmdBuf="";
+    setTimeout(()=>{ if(S.awaiting){ S.awaiting=false; S.orbMode="idle"; S.buffer=""; } },9000);
+    S.ignoreUntil=Date.now()+1400;
+  }
+  S.buffer="";
+}
+// wait for a real pause before acting, so she hears the whole sentence
+let cmdBuf="", cmdTimer=null;
+function pokeCmdTimer(){
+  clearTimeout(cmdTimer);
+  cmdTimer=setTimeout(()=>{ const c=cmdBuf.trim(); cmdBuf=""; S.awaiting=false; if(c) handleCommand(c); },1100);
+}
+function queueCommand(t){ cmdBuf=(cmdBuf+" "+t).trim(); pokeCmdTimer(); }
+</script>
+
+<script>
+"use strict";
+/* ---------------- command router ---------------- */
+function handleCommand(raw){
+  const text=raw.trim().replace(/\s+/g," ");
+  if(!text) return;
+  addMsg("you",text);
+  S.orbMode="thinking";
+  const tl=text.toLowerCase();
+  closeDoc(); // the writer window stays up only until the next command
+  // answering a concierge question ("where? / when? / budget?") — not a new command
+  if(S.flow&&S.flow.awaiting){
+    (async ()=>{ try{ await answerFlowSlot(text); }catch(e){ S.flow=null; speak("Let's drop that — what do you need?"); } S.orbMode="idle"; })();
+    return;
+  }
+  // email composer is open: sticky context — everything said is about the email
+  // ("hey luna" is the only exit hatch; a fresh "send an email" starts over)
+  if(S.mail&&S.mail.open){
+    (async ()=>{
+      try{
+        if(await tryMailComposer(tl,text)){ /* fresh composer started */ }
+        else if(S.mail&&S.mail.awaiting){ await answerMailSlot(text); }
+        else if(S.mail){ await emailContext(text); }
+      }catch(e){ S.mail=null; closeMail(); speak("Email dropped."); }
+      S.orbMode="idle";
+    })();
+    return;
+  }
+  (async ()=>{
+    try{
+      if(await trySystem(tl,text)) return done();
+      if(await tryNotes(tl,text)) return done();
+      if(await tryMemory(tl,text)) return done();
+      if(await tryPersonality(tl,text)) return done();
+      if(await tryFiles(tl,text)) return done();
+      if(await tryMailComposer(tl,text)) return done();
+      if(await tryEmail(tl,text)) return done();
+      if(await runGen(()=>tryWriter(tl,text))) return done();
+      if(await tryImageEngine(tl,text)) return done();
+      if(await tryImageGen(tl,text)) return done();
+      if(await tryTimeDate(tl)) return done();
+      if(await tryTimer(tl,text)) return done();
+      if(await tryCalc(tl,text)) return done();
+      if(await tryWeather(tl,text)) return done();
+      if(await tryDevice(tl,text)) return done();
+      if(await tryFileSearch(tl)) return done();
+      if(await tryConcierge(tl,text)) return done();
+      if(await runGen(()=>tryBriefing(tl,text))) return done();
+      if(await runGen(()=>tryTeach(tl,text))) return done();
+      if(await runGen(()=>tryWildcard(tl,text))) return done();
+      if(await tryWeb(tl,text)) return done();
+      if(await trySlang(tl,text)) return done();
+      if(await runGen(()=>tryWiki(tl,text))) return done();
+      await tryBrain(tl,text);
+    }catch(e){ loadFail(); }
+    function done(){ S.orbMode="idle"; }
+  })();
+}
+function needWeb(){
+  if(!S.webAccess){ speak("Web access is turned off. Flip it on in Settings under Permissions."); return false; }
+  return true;
+}
+
+/* ---------------- system ---------------- */
+const JOKES=[
+ "Why do programmers prefer dark mode? Because light attracts bugs.",
+ "I told my computer I needed a break, and now it won't stop sending me KitKat ads.",
+ "Why did the Chromebook go to therapy? Too many tabs open.",
+ "There are only 10 kinds of people: those who understand binary and those who don't.",
+ "Why don't scientists trust atoms? Because they make up everything.",
+ "I would tell you a UDP joke, but you might not get it.",
+ "Why did the developer go broke? He used up all his cache.",
+ "What do you call a fake noodle? An impasta."
+];
+async function trySystem(tl,text){
+  // casual greetings FIRST — never let "what's up" fall through to a dictionary definition
+  if(/^(what'?s up|whats up|wassup|wazzup|whaddup|sup|yo|hiya|howdy|hey+)\b/.test(tl)&&tl.length<30){
+    const g=[
+      "Not much — what's good with you?",
+      "Hey! I'm listening. What do you need?",
+      "Just hanging out in the ring. What's up with you?",
+      "All good over here. What are we getting into?"
+    ];
+    speak(g[Math.floor(Math.random()*g.length)]);
+    return true;
+  }
+  if(/\b(stop listening|mute|be quiet|shut up|quiet)\b/.test(tl)&&!/unmute/.test(tl)){
+    S.muted=true; store.set("muted",true); updateMuteBtn();
+    addMsg("luna","Voice muted. Answers still show on screen. Say or type 'unmute' to bring my voice back.");
+    setSubtitle("Voice muted.");
+    return true;
+  }
+  if(/\bunmute\b/.test(tl)){
+    S.muted=false; store.set("muted",false); updateMuteBtn();
+    speak("Voice back on.");
+    return true;
+  }
+  if(/^(help|what can you do|commands)$/.test(tl)||tl.includes("what can you do")){
+    speak("Here's what I can do. Ask me anything — I can look things up, explain slang, and just chat. Say 'generate an image of' something and I'll draw it and save it to your gallery (say 'use Stable Horde for images' to try the slower engine with different models). Say 'open file' and I'll pop any file into a mini window. I can draft emails in Gmail, open YouTube videos and websites, check the weather, do math, set timers, take notes, and save memories. I can also shop for you — say 'find me a cabin in Estes Park' or 'I want to buy a laptop' and I'll ask your budget and dates, then list the best options. Say 'write an essay about' something and I'll write it in a side window you can copy from — or 'plan me' something and I'll build a plan instead. Ask 'what are the top tech stories today' and I'll write you a news briefing in a side window too. Say 'teach me about' anything and I'll research it and give you a mini-lesson, or say 'surprise me' and I'll pick something fun to actually do. Say 'send an email' and I'll walk you through it step by step — while the email window is open I'm all ears, so just tell me edits, or say hey Luna to drop it and start fresh. One more thing: while I'm working on something, I only listen for my name — say 'hey "+S.aiName+"' to get my attention and I'll stop what I'm doing. You can interrupt me anytime — just say 'hey "+S.aiName+"' while I'm talking.");
+    return true;
+  }
+  if(/\bjoke\b/.test(tl)){ speak(JOKES[Math.floor(Math.random()*JOKES.length)]); return true; }
+  if(/^(hi|hello|hey|yo|sup|good (morning|afternoon|evening))\b/.test(tl)&&tl.length<26){
+    speak(S.name?("Hey "+S.name+"! What do you need?"):"Hey! What do you need?");
+    return true;
+  }
+  if(/how are you/.test(tl)){ speak("Running smooth and fully charged with curiosity. How can I help?"); return true; }
+  if(/thank/.test(tl)){ speak("Anytime."); return true; }
+  if(/^(bye|goodbye|good ?night|see you)/.test(tl)){ speak("Later! I'll be right here when you need me."); return true; }
+  if(/repeat/.test(tl)&&/that|it|say/.test(tl)){ if(S.lastSpoken) speak(S.lastSpoken); else speak("I haven't said anything yet."); return true; }
+  if(/my name is (.+)/.test(tl)){
+    const n=text.match(/my name is (.+)/i)[1].trim().replace(/[.!?]$/,"");
+    S.name=n.charAt(0).toUpperCase()+n.slice(1); store.set("name",S.name);
+    speak("Got it, "+S.name+". Nice to meet you.");
+    return true;
+  }
+  if(/what('| i)s my name/.test(tl)){ speak(S.name?("You're "+S.name+"."):("You haven't told me your name yet. Say 'my name is' and then your name.")); return true; }
+  if(/who are you|your name/.test(tl)){ speak("I'm "+S.aiName+", your local voice assistant. I live in this file on your Chromebook."); return true; }
+  if(/^(stop|quiet)$/.test(tl)){ stopListening(); speak("Stopped listening. Press the mic button when you want me back."); return true; }
+  return false;
+}
+function updateMuteBtn(){ btnMute.textContent=S.muted?"🔇":"🔊"; }
+
+/* ---------------- memories (notes were merged in here) ---------------- */
+async function tryNotes(tl,text){
+  let m=tl.match(/(?:take a note|note|remember)(?: that| to)?\s*[:\-]?\s*(.+)/);
+  if(m&&m[1]&&!/^(?:me to|to remind)/.test(m[1])&&!/this about me/.test(m[1])){
+    const note=text.match(/(?:take a note|note|remember)(?: that| to)?\s*[:\-]?\s*(.+)/i)[1].trim();
+    addMemory(note);
+    speak("I'll remember that."); return true;
+  }
+  if(/read( me)? my notes|list( my)? notes|what are my notes|my notes/.test(tl)){
+    if(!S.memories.length){ speak("You have no memories saved yet. Say 'remember' followed by what you want me to keep."); }
+    else speak("Here's what I remember: "+S.memories.map((n,i)=>(i+1)+". "+n).join(" "));
+    return true;
+  }
+  m=tl.match(/remind me to (.+?) in (\d+)\s*(second|minute|hour)/);
+  if(m){
+    const what=m[1], ms=parseInt(m[2],10)*(m[3].startsWith("hour")?3600000:m[3].startsWith("minute")?60000:1000);
+    addTimer(ms,"Reminder: "+what);
+    speak("I'll remind you to "+what+" in "+m[2]+" "+m[3]+(parseInt(m[2],10)>1?"s":"")+".");
+    return true;
+  }
+  if(/delete|clear/.test(tl)&&/notes?|memories|memory/.test(tl)){
+    S.memories=[]; store.set("memories",S.memories); renderMemories();
+    speak("All memories cleared."); return true;
+  }
+  return false;
+}
+
+/* ---------------- memories ---------------- */
+function renderMemories(){
+  const box=$("memList"); box.innerHTML="";
+  if(!S.memories.length){ box.innerHTML='<div class="empty">Nothing saved yet.</div>'; return; }
+  const wrap=document.createElement("div"); wrap.className="chiprow";
+  S.memories.forEach((mem,i)=>{
+    const c=document.createElement("div"); c.className="chip";
+    const s=document.createElement("span"); s.textContent="🧠 "+mem; c.appendChild(s);
+    const b=document.createElement("button"); b.textContent="✕"; b.title="Forget this";
+    b.onclick=()=>{ S.memories.splice(i,1); store.set("memories",S.memories); renderMemories(); };
+    c.appendChild(b); wrap.appendChild(c);
+  });
+  box.appendChild(wrap);
+}
+function addMemory(t){
+  t=t.trim().replace(/[.!?]$/,""); if(!t) return;
+  S.memories.push(t); store.set("memories",S.memories); renderMemories();
+}
+async function tryMemory(tl,text){
+  let m=tl.match(/(?:remember this about me|add (?:a )?memory)[:\s]+(.+)/);
+  if(m){
+    const mem=text.match(/(?:remember this about me|add (?:a )?memory)[:\s]+(.+)/i)[1].trim();
+    addMemory(mem);
+    speak("I'll remember that."); return true;
+  }
+  if(/what do you remember( about me)?/.test(tl)){
+    if(!S.memories.length) speak("I don't have any memories saved yet. Say 'remember this about me' followed by what you want me to keep.");
+    else speak("Here's what I remember about you: "+S.memories.map((x,i)=>(i+1)+". "+x).join(" "));
+    return true;
+  }
+  m=tl.match(/forget (?:that )?(.+)/);
+  if(m){
+    const q=m[1].trim().toLowerCase();
+    const i=S.memories.findIndex(x=>x.toLowerCase().includes(q));
+    if(i>=0){ const gone=S.memories.splice(i,1)[0]; store.set("memories",S.memories); renderMemories(); speak("Forgot: "+gone+"."); }
+    else speak("I couldn't find a memory matching that.");
+    return true;
+  }
+  return false;
+}
+
+/* ---------------- time & date ---------------- */
+async function tryTimeDate(tl){
+  const now=new Date();
+  if(/what('| i)s the time|tell me the time|^time$/.test(tl)){
+    speak("It's "+now.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})+".");
+    return true;
+  }
+  if(/what('| i)s the date|what day is|today('| i)s date|^date$/.test(tl)){
+    speak("Today is "+now.toLocaleDateString([],{weekday:"long",year:"numeric",month:"long",day:"numeric"})+".");
+    return true;
+  }
+  return false;
+}
+
+/* ---------------- timers ---------------- */
+function renderTimers(){
+  const box=$("timerList"); box.innerHTML="";
+  if(!S.timers.length){ box.innerHTML='<div class="empty">No active timers.</div>'; return; }
+  const wrap=document.createElement("div"); wrap.className="chiprow";
+  S.timers.forEach(t=>wrap.appendChild(t.el));
+  box.appendChild(wrap);
+}
+function addTimer(ms,label){
+  const el=document.createElement("div"); el.className="chip";
+  const s=document.createElement("span"); el.appendChild(s);
+  const end=Date.now()+ms;
+  const rec={el:el};
+  const id=setInterval(()=>{
+    const left=Math.max(0,end-Date.now());
+    s.textContent="⏱ "+label+" — "+fmtDur(left);
+    if(left<=0){
+      clearInterval(id); el.remove();
+      S.timers=S.timers.filter(t=>t!==rec); renderTimers();
+      beep(660,0.4,0); beep(660,0.4,0.5); speak(label+" — time's up!");
+    }
+  },1000);
+  s.textContent="⏱ "+label+" — "+fmtDur(ms);
+  const b=document.createElement("button"); b.textContent="✕"; b.title="Cancel";
+  b.onclick=()=>{ clearInterval(id); el.remove(); S.timers=S.timers.filter(t=>t!==rec); renderTimers(); };
+  el.appendChild(b);
+  rec.cancel=()=>{clearInterval(id);};
+  S.timers.push(rec); renderTimers();
+}
+function fmtDur(ms){
+  const s=Math.round(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60;
+  return (h?h+"h ":"")+(m?m+"m ":"")+ss+"s";
+}
+async function tryTimer(tl,text){
+  if(!/(?:set )?(?:a )?timer|alarm/.test(tl)) return false;
+  const n=tl.match(/(\d+)\s*(second|minute|hour)/);
+  if(!n){ speak("For how long? Say something like: set a timer for 5 minutes."); return true; }
+  const ms=parseInt(n[1],10)*(n[2].startsWith("hour")?3600000:n[2].startsWith("minute")?60000:1000);
+  addTimer(ms,"Timer");
+  speak("Timer set for "+n[1]+" "+n[2]+(parseInt(n[1],10)>1?"s":"")+".");
+  return true;
+}
+
+/* ---------------- calculator ---------------- */
+async function tryCalc(tl,text){
+  let expr=tl.replace(/^calculate\s*/,"").replace(/^what('| i)s\s*/,"").replace(/\?$/,"");
+  const words={plus:"+",minus:"-",times:"*",multiplied:"*",divide:"/",divided:"/",over:"/",percent:"%",to:"",by:"",and:"",what:"",is:"",the:"",equals:"=",x:"*",X:"*","×":"*","÷":"/"};
+  expr=expr.split(/\s+/).map(w=>words[w]!==undefined?words[w]:w).join(" ");
+  expr=expr.replace(/(\d)\s*%\s*of\s*(\d)/g,"($1/100*$2)");
+  expr=expr.replace(/square root of (\d+(\.\d+)?)/g,"sqrt($1)");
+  expr=expr.replace(/sqrt\(/g,"Math.sqrt(");
+  if(!/^[\d\s+\-*/().%^]+$/.test(expr)) return false;
+  if(!/[\d]/.test(expr)||!/[-+*/%^]/.test(expr)) return false;
+  try{
+    const val=Function('"use strict"; return ('+expr.replace(/\^/g,"**")+")")();
+    if(typeof val!=="number"||!isFinite(val)) return false;
+    speak("That's "+(Math.round(val*1000000)/1000000)+".");
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---------------- weather ---------------- */
+async function geocode(place){
+  const r=await fetch("https://geocoding-api.open-meteo.com/v1/search?name="+encodeURIComponent(place)+"&count=1&language=en&format=json");
+  const j=await r.json();
+  if(j.results&&j.results.length) return {name:j.results[0].name+", "+(j.results[0].country||""), lat:j.results[0].latitude, lon:j.results[0].longitude};
+  return null;
+}
+const WMO={0:"clear sky",1:"mainly clear",2:"partly cloudy",3:"overcast",45:"foggy",48:"icy fog",51:"light drizzle",53:"drizzle",55:"heavy drizzle",61:"light rain",63:"rain",65:"heavy rain",71:"light snow",73:"snow",75:"heavy snow",80:"light showers",81:"showers",82:"heavy showers",95:"thunderstorms",96:"storm with hail",99:"storm with hail"};
+async function fetchWeather(lat,lon,name){
+  const r=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&timezone=auto&forecast_days=2");
+  const j=await r.json();
+  const c=j.current, d=j.daily;
+  const cond=WMO[c.weather_code]||"changing conditions";
+  return "In "+name+" it's "+Math.round(c.temperature_2m)+"°F and "+cond+", humidity "+c.relative_humidity_2m+"%, wind "+Math.round(c.wind_speed_10m)+" mph. "+
+    "Today's high "+Math.round(d.temperature_2m_max[0])+", low "+Math.round(d.temperature_2m_min[0])+
+    ", rain chance "+(d.precipitation_probability_max[0]??0)+"%. Tomorrow: high "+Math.round(d.temperature_2m_max[1])+", low "+Math.round(d.temperature_2m_min[1])+".";
+}
+async function tryWeather(tl,text){
+  if(!/weather/.test(tl)) return false;
+  if(!needWeb()) return true;
+  let m=tl.match(/weather in (.+)/);
+  if(m){
+    const place=m[1].trim();
+    speak("Looking up the weather in "+place+"…");
+    try{
+      const g=await geocode(place);
+      if(!g){ speak("I couldn't find "+place+". Try another city name."); return true; }
+      speak(await fetchWeather(g.lat,g.lon,g.name));
+    }catch(e){ loadFail(); }
+    return true;
+  }
+  let m2=tl.match(/(?:set my location|i live in|my (?:city|location) is)\s+(?:to\s+)?(.+)/);
+  if(m2){
+    const place=m2[1].trim();
+    try{
+      const g=await geocode(place);
+      if(!g){ speak("I couldn't find "+place+"."); return true; }
+      S.loc=g; store.set("loc",g);
+      speak("Saved. Your location is "+g.name+". Ask me for the weather anytime.");
+    }catch(e){ loadFail(); }
+    return true;
+  }
+  if(!S.loc){
+    speak("I don't know where you are yet. Say: set my location to, then your city — or ask: weather in, then a city name.");
+    return true;
+  }
+  speak("Checking the weather…");
+  try{ speak(await fetchWeather(S.loc.lat,S.loc.lon,S.loc.name)); }
+  catch(e){ loadFail(); }
+  return true;
+}
+
+/* ---------------- device ---------------- */
+async function tryDevice(tl,text){
+  if(/battery/.test(tl)){
+    try{
+      const b=await navigator.getBattery();
+      speak("Battery is at "+Math.round(b.level*100)+" percent"+(b.charging?", and charging.":"."));
+    }catch(e){ speak("I can't read the battery on this device."); }
+    return true;
+  }
+  if(/what time zone|my timezone/.test(tl)){
+    speak("Your timezone is "+Intl.DateTimeFormat().resolvedOptions().timeZone+".");
+    return true;
+  }
+  if(/am i online|internet|connection/.test(tl)){
+    speak(navigator.onLine?"Yes, you're online.":"You're offline right now. Voice recognition and web lookups need the internet.");
+    return true;
+  }
+  return false;
+}
+
+/* ---------------- concierge: shopping + places to stay ---------------- */
+// Detects "find me a cabin in X" / "i want to buy a laptop", asks for the
+// missing budget (and trip dates for stays), then shows the best options as
+// a clickable list in a mini window — tapping one opens it in a real tab.
+// Follow-ups while results are showing: "cheaper", "pricier", "show more",
+// "compare 1 and 2", "open number 3".
+const STAY_WORDS=/\b(cabins?|hotels?|motels?|airbnbs?|vrbos?|vacation rentals?|places? to stay|lodge?s?|resorts?|bed and breakfasts?)\b/;
+const BUY_HINT=/\b(buy|buying|purchase|purchasing|order)\b/;
+function parseBudget(tl){
+  if(/\ba\s+thousand\b|\ba\s+grand\b/.test(tl)) return 1000;
+  const m=tl.match(/\$?\s*(\d[\d,]*)\s*(k|thousand|grand|dollars|bucks|usd)?\b/);
+  if(!m) return null;
+  let n=parseFloat(m[1].replace(/,/g,""));
+  const u=(m[2]||"").toLowerCase();
+  if(u==="k"||u==="thousand"||u==="grand") n*=1000;
+  if(!(n>0)||n>100000000) return null;
+  return Math.round(n);
+}
+const MONTHN={january:1,jan:1,february:2,feb:2,march:3,mar:3,april:4,apr:4,may:5,june:6,jun:6,july:7,jul:7,august:8,aug:8,september:9,sep:9,sept:9,october:10,oct:10,november:11,nov:11,december:12,dec:12};
+function monthDay(mon,day){
+  const now=new Date();
+  let d=new Date(now.getFullYear(),mon-1,day);
+  if(d<new Date(now.getFullYear(),now.getMonth(),now.getDate())) d=new Date(now.getFullYear()+1,mon-1,day);
+  return d;
+}
+function fmtD(d){ return d.toLocaleDateString([],{month:"short",day:"numeric"}); }
+function isoD(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function isoToDate(s){ const p=s.split("-"); return new Date(+p[0],+p[1]-1,+p[2]); }
+function nextWeekday(wd){ const d=new Date(); const diff=(wd-d.getDay()+7)%7||7; d.setDate(d.getDate()+diff); return d; }
+function mkRange(a,b,label){
+  const nights=Math.max(1,Math.round((b-a)/864e5));
+  return {checkin:isoD(a),checkout:isoD(b),label:label||(fmtD(a)+" to "+fmtD(b)),nights:nights};
+}
+function parseDates(tl){
+  if(/\bnext weekend\b/.test(tl)){ const f=nextWeekday(5); return mkRange(f,new Date(f.getTime()+2*864e5),"next weekend"); }
+  if(/\bthis weekend\b/.test(tl)){ const f=nextWeekday(5); return mkRange(f,new Date(f.getTime()+2*864e5),"this weekend"); }
+  const mn="(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)";
+  let m=tl.match(new RegExp(mn+"\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:to|-|through|thru|till|until|\u2013)\\s*(?:"+mn+"\\s+)?(\\d{1,2})(?:st|nd|rd|th)?"));
+  if(m){
+    const mo1=MONTHN[m[1]], mo2=m[3]?MONTHN[m[3]]:mo1;
+    if(!mo1) return null;
+    const a=monthDay(mo1,parseInt(m[2],10));
+    let b=monthDay(mo2||mo1,parseInt(m[4],10));
+    if(b<=a) b=new Date(a.getTime()+864e5);
+    return mkRange(a,b,null);
+  }
+  m=tl.match(new RegExp("\\b"+mn+"\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b"));
+  if(m&&MONTHN[m[1]]){
+    const a=monthDay(MONTHN[m[1]],parseInt(m[2],10));
+    return {checkin:isoD(a),checkout:null,label:fmtD(a),nights:null};
+  }
+  return null;
+}
+function exampleDates(){
+  const a=new Date(); a.setDate(a.getDate()+21);
+  return fmtD(a)+" to "+fmtD(new Date(a.getTime()+3*864e5));
+}
+function extractDestination(tl){
+  let t=tl.replace(/\b(next weekend|this weekend)\b/g," ")
+    .replace(/(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\w*\s+\d{1,2}(?:st|nd|rd|th)?(\s*(?:to|-|through|thru|till|until|\u2013)\s*((january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\w*\s+)?\d{1,2}(?:st|nd|rd|th)?)?/g," ")
+    .replace(/\s+for\s+(a\s+|the\s+|my\s+)?(trip|vacation|weekend|stay|honeymoon|getaway).*$/," ");
+  const m=t.match(/\bin\s+([a-z][a-z\s.'-]*?)\s*$/);
+  if(m&&m[1].trim().length>1) return cap1(m[1].trim());
+  return null;
+}
+function extractItem(tl){
+  let m=tl.match(/(?:want|need)\s+to\s+buy\s+(?:a\s+|an\s+|me\s+)?(.+?)(?:\s+under\s+\$?[\d,k]+|\s+for\s+(?:under\s+|less than\s+)?\$?[\d,k]+|\s*$)/)
+       || tl.match(/(?:find|search for|look for|show me|get me)\s+(?:me\s+)?(?:a\s+|an\s+)?(.+?)\s+to\s+buy\s*$/)
+       || tl.match(/\bbuy\s+(?:me\s+)?(?:a\s+|an\s+)?(.+?)(?:\s+under\s+\$?[\d,k]+|\s+for\s+(?:under\s+|less than\s+)?\$?[\d,k]+|\s*$)/);
+  if(m&&m[1].trim().length>1) return cap1(m[1].trim().replace(/\s+for\s+sale$/,""));
+  return null;
+}
+function extractUpfrontBudget(tl){
+  const m=tl.match(/(?:budget|under|less than|at most|max(?:imum)?)\s*(?:of\s*)?\$?\s*(\d[\d,]*)\s*(k|thousand|grand|dollars|bucks)?/);
+  return m?parseBudget(m[0]):null;
+}
+// --- multi-turn slot filling: answers to "where? / when? / budget?" land here ---
+async function answerFlowSlot(text){
+  const tl=text.toLowerCase().trim();
+  const f=S.flow; if(!f) return;
+  if(/^(cancel|never ?mind|stop|forget it|nevermind|drop it|never mind)/.test(tl)){ S.flow=null; speak("No problem — dropped it."); return; }
+  if(f.awaiting==="where"){
+    const dest=text.trim().replace(/[?.!]+$/,"");
+    if(dest.length<2){ speak("I didn't catch that — what city or area?"); return; }
+    f.slots.destination=cap1(dest); flowNext(); return;
+  }
+  if(f.awaiting==="dates"){
+    const d=parseDates(tl);
+    if(!d){ speak("I didn't catch the dates — try something like "+exampleDates()+". Or say cancel."); return; }
+    if(!d.checkout){ f.slots.dates=d; f.awaiting="checkout"; speak("Got it, checking in "+d.label+". What day are you checking out?"); return; }
+    f.slots.dates=d; flowNext(); return;
+  }
+  if(f.awaiting==="checkout"){
+    let out=null;
+    const d=parseDates(tl);
+    if(d&&d.checkin) out=d.checkin;
+    else{
+      const m2=tl.match(/(\d{1,2})(?:st|nd|rd|th)?/);
+      if(m2){ const ci=f.slots.dates.checkin.split("-"); out=ci[0]+"-"+ci[1]+"-"+String(m2[1]).padStart(2,"0"); }
+    }
+    if(!out){ speak("What day are you checking out?"); return; }
+    const a=f.slots.dates.checkin;
+    if(out<=a){ speak("Checkout has to be after check-in — what day are you leaving?"); return; }
+    f.slots.dates={checkin:a,checkout:out,label:fmtD(isoToDate(a))+" to "+fmtD(isoToDate(out)),nights:Math.round((isoToDate(out)-isoToDate(a))/864e5)};
+    flowNext(); return;
+  }
+  if(f.awaiting==="budget"){
+    const b=parseBudget(tl);
+    if(!b){ speak("I didn't catch a budget — say something like '800 dollars'. Or say cancel."); return; }
+    f.slots.budget=b; flowNext(); return;
+  }
+}
+function flowNext(){
+  const f=S.flow; if(!f) return;
+  const s=f.slots;
+  if(f.kind==="stay"){
+    if(!s.destination){ f.awaiting="where"; speak("Where are you looking to stay?"); return; }
+    if(!s.dates||!s.dates.checkout){ f.awaiting="dates"; speak("When's the trip? Give me the dates, like "+exampleDates()+"."); return; }
+    if(!s.budget){ f.awaiting="budget"; speak("And what's your total budget for the stay?"); return; }
+  }else{
+    if(!s.budget){ f.awaiting="budget"; speak("What's your budget for "+s.item+"?"); return; }
+  }
+  runConcierge();
+}
+async function brainRaw(prompt,sys,ms){
+  const url="https://text.pollinations.ai/"+encodeURIComponent(prompt.slice(0,1400))+"?system="+encodeURIComponent(sys||"");
+  const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),ms||18000);
+  const r=await fetch(url,{signal:ctrl.signal}); clearTimeout(to);
+  if(!r.ok) throw 0;
+  return (await r.text()).trim();
+}
+function optionUrl(kind,name,s){
+  if(kind==="stay") return "https://www.google.com/search?q="+encodeURIComponent(name+" "+(s.destination||"")+" cabin rental");
+  return "https://www.google.com/search?tbm=shop&q="+encodeURIComponent(name);
+}
+function parseOptions(raw,kind,s){
+  if(!raw) return [];
+  const opts=[];
+  for(const line of raw.split("\n")){
+    const parts=line.split("||").map(p=>p.trim().replace(/^\d+[.)]\s*/,""));
+    if(parts.length<3) continue;
+    const name=parts[0].replace(/^["'“”]+|["'“”]+$/g,"");
+    const priceNum=parseFloat((parts[1]||"").replace(/[^0-9.]/g,""));
+    if(!name||name.length>90) continue;
+    opts.push({
+      name:name,
+      price:isFinite(priceNum)?priceNum:null,
+      priceLabel:isFinite(priceNum)?"$"+Math.round(priceNum).toLocaleString()+(kind==="stay"?"/night":""):"see listing",
+      why:parts[2]||"", con:parts[3]||"",
+      url:optionUrl(kind,name,s)
+    });
+    if(opts.length>=6) break;
+  }
+  return opts;
+}
+function conciergeTitle(f){
+  const s=f.slots;
+  return f.kind==="stay"?("🏠 "+(s.bedrooms?s.bedrooms+"BR ":"")+"stays in "+s.destination):("🛒 "+cap1(s.item));
+}
+function conciergeSubtitle(f){
+  const s=f.slots;
+  return f.kind==="stay"?(s.dates.label+", up to $"+s.budget.toLocaleString()+" total"):("up to $"+s.budget.toLocaleString());
+}
+function conciergeLiveLinks(c){
+  const s=c.slots;
+  if(c.kind==="stay"){
+    const slug=s.destination.split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join("-");
+    const guests=s.bedrooms?Math.min(16,s.bedrooms*2+2):6;
+    return '<a href="https://www.airbnb.com/s/'+encodeURIComponent(slug)+'/homes?checkin='+s.dates.checkin+'&checkout='+s.dates.checkout+'&adults='+guests+'" target="_blank" rel="noopener">Airbnb</a> · '+
+      '<a href="https://www.vrbo.com/search?destination='+encodeURIComponent(s.destination)+'&startDate='+s.dates.checkin+'&endDate='+s.dates.checkout+'" target="_blank" rel="noopener">Vrbo</a> · '+
+      '<a href="https://www.expedia.com/Hotel-Search?destination='+encodeURIComponent(s.destination)+'" target="_blank" rel="noopener">Expedia</a>';
+  }
+  const q=encodeURIComponent(s.item);
+  return '<a href="https://www.amazon.com/s?k='+q+'" target="_blank" rel="noopener">Amazon</a> · '+
+    '<a href="https://www.ebay.com/sch/i.html?_nkw='+q+'" target="_blank" rel="noopener">eBay</a> · '+
+    '<a href="https://www.google.com/search?tbm=shop&q='+q+'" target="_blank" rel="noopener">Google Shopping</a>';
+}
+function conciergeCard(){
+  const c=S.concierge;
+  const rows=c.options.map((o,i)=>
+    '<a class="copt" href="'+o.url+'" target="_blank" rel="noopener">'+
+      '<div class="copt-head"><span class="copt-num">'+(i+1)+'</span>'+
+      '<span class="copt-name">'+esc(o.name)+'</span>'+
+      '<span class="copt-price">'+esc(o.priceLabel)+'</span></div>'+
+      (o.why?'<div class="copt-why">✓ '+esc(o.why)+'</div>':"")+
+      (o.con?'<div class="copt-con">✕ '+esc(o.con)+'</div>':"")+
+    '</a>').join("");
+  openMini(c.title,
+    '<p class="csub">'+esc(c.subtitle)+' — tap any option to open it in a new tab.</p>'+
+    (rows?'<div class="clist">'+rows+'</div>':'<p class="csub" style="margin-top:8px">My recommendation brain didn\'t answer, but the live links below always have current options and prices.</p>')+
+    '<p class="clive">Check live prices: '+conciergeLiveLinks(c)+'</p>'+
+    '<p class="ctip">Try "cheaper", "pricier", "show more", "compare 1 and 2", or "open number 3". Prices are estimates — confirm on the listing.</p>');
+  if(rows) addMsg("luna","",'<b>'+esc(c.title)+'</b> — '+esc(c.subtitle)+'<br>'+c.options.map((o,i)=>(i+1)+". "+esc(o.name)+" ("+esc(o.priceLabel)+")").join("<br>"));
+}
+async function runConcierge(refineNote){
+  genStart();
+  try{
+  const f=S.flow||S.concierge; // refineNote reuses the last search's slots
+  const keepFlow=!!S.flow;
+  S.flow=null;
+  if(!f) return;
+  const s=f.slots, kind=f.kind;
+  setSubtitle("Finding the best options…"); S.orbMode="thinking";
+  const what=kind==="stay"
+    ?((s.bedrooms?s.bedrooms+"-bedroom ":"")+"cabins / vacation rentals in "+s.destination+". Trip: "+s.dates.label+" ("+s.dates.nights+" nights). Total budget: up to $"+s.budget.toLocaleString())
+    :("buy: "+s.item+". Budget: up to $"+s.budget.toLocaleString());
+  const n=kind==="stay"?5:4;
+  const prompt="The user wants "+what+"."+(refineNote?(" Refinement: "+refineNote+"."):"")+
+    " List the "+n+" best SPECIFIC, real options (real brand+model names for products; real well-known cabins, lodges, hotels or vacation-rental style names for stays in that area). Keep prices realistic and within budget."+
+    " Reply with ONLY these lines, one option per line, fields separated by ' || ' — no intro, no numbering, no conclusion:\n"+
+    "NAME || PRICE (number only, no $ or commas) || WHY_IT_FITS (max 10 words) || ONE_DOWNSIDE (max 10 words)";
+  let opts=[];
+  try{
+    const raw=await brainRaw(prompt,"You are a shopping and travel assistant. Follow the user's format exactly — only the option lines, nothing else.",20000);
+    opts=parseOptions(raw,kind,s);
+  }catch(e){}
+  S.concierge={kind:kind,slots:s,options:opts,title:conciergeTitle(f),subtitle:conciergeSubtitle(f)};
+  conciergeCard();
+  if(!opts.length){
+    speak("My recommendation brain isn't responding right now — but the live search links are in the window, and those always have current options and prices.");
+    return;
+  }
+  const priced=opts.filter(o=>o.price!=null);
+  const cheapest=priced.length?priced.reduce((a,b)=>a.price<b.price?a:b):opts[0];
+  speak("I found "+opts.length+" options for "+S.concierge.subtitle+". "+
+    (cheapest.price!=null?("Cheapest is "+cheapest.name+" at about "+cheapest.priceLabel+". "):"")+
+    "They're in the window — tap one to open it in a new tab, or say 'open number 2'.");
+  }finally{ genEnd(); }
+}
+// follow-ups while a result list is showing
+async function conciergeFollowup(tl,text){
+  const c=S.concierge;
+  let m=tl.match(/(?:open|show)\s+(?:number|option)\s*(\d+)/)||tl.match(/^number\s*(\d+)/);
+  if(m){
+    const i=parseInt(m[1],10)-1;
+    if(c.options[i]){ openUrl(c.options[i].url,c.options[i].name,"Opening "+c.options[i].name+"."); }
+    else speak("I only have "+c.options.length+" options — pick 1 through "+c.options.length+".");
+    return true;
+  }
+  if(/\bcompare\b/.test(tl)){
+    m=tl.match(/compare\s+(?:option\s+|number\s+)?(\d+)\s+and\s+(?:option\s+|number\s+)?(\d+)/)||tl.match(/compare\s+(?:the\s+)?first\s+two/);
+    let a,b;
+    if(m&&m[1]){ a=c.options[parseInt(m[1],10)-1]; b=c.options[parseInt(m[2],10)-1]; }
+    else if(c.options.length>=2){ a=c.options[0]; b=c.options[1]; }
+    if(!a||!b){ speak("Say something like 'compare 1 and 2'."); return true; }
+    setSubtitle("Comparing…");
+    try{
+      const raw=await brainRaw("Compare these two options for a buyer, in 3 short sentences max. Be decisive about which is better and for whom:\n1) "+a.name+" ("+a.priceLabel+") — "+a.why+". Downside: "+a.con+"\n2) "+b.name+" ("+b.priceLabel+") — "+b.why+". Downside: "+b.con,
+        "You are a decisive shopping assistant. Short comparison, pick a winner.",15000);
+      const ans=firstSentences(raw,3);
+      showAnswerCard({title:a.name+" vs "+b.name,image:null,text:ans});
+      addMsg("luna",ans);
+      setSubtitle(ans); utter(ans,()=>{ if(!S.muted) cardUntilDone(); });
+    }catch(e){ loadFail(); }
+    return true;
+  }
+  if(/\bcheaper\b|\bless expensive\b/.test(tl)){ await runConcierge("go cheaper — aim roughly 30% under the previous prices"); return true; }
+  if(/\bpricier\b|\bmore expensive\b|\bnicer\b|\bfancier\b|\bluxury\b|\bupgrade\b/.test(tl)){ await runConcierge("go higher-end — nicer options, budget can stretch about 40% higher"); return true; }
+  if(/(show|find|get)( me)? more/.test(tl)||/\bmore options\b/.test(tl)){
+    setSubtitle("Finding more options…");
+    try{
+      const names=c.options.map(o=>o.name).join("; ");
+      const raw=await brainRaw("The user wants "+(c.kind==="stay"?("places to stay: "+c.slots.destination):("to buy: "+c.slots.item))+". List 4 MORE specific, real options DIFFERENT from these: "+names+". Same format, one per line, fields separated by ' || ': NAME || PRICE (number only) || WHY_IT_FITS (max 10 words) || ONE_DOWNSIDE (max 10 words). Only the option lines.",
+        "You are a shopping and travel assistant. Only the option lines.",20000);
+      const more=parseOptions(raw,c.kind,c.slots).filter(o=>!c.options.some(e=>e.name.toLowerCase()===o.name.toLowerCase()));
+      if(more.length){ c.options=c.options.concat(more); conciergeCard(); speak("Added "+more.length+" more — "+c.options.length+" total now. They're in the window."); }
+      else speak("I couldn't find more that fit — try 'cheaper' or 'pricier' to widen it.");
+    }catch(e){ loadFail(); }
+    return true;
+  }
+  if(/^(new search|start over|search again)/.test(tl)){ S.concierge=null; speak("Okay, fresh search — what are you looking for?"); return true; }
+  return false;
+}
+async function tryConcierge(tl,text){
+  // follow-ups on a visible result list take priority
+  if(S.concierge&&S.concierge.options&&S.concierge.options.length){
+    if(await conciergeFollowup(tl,text)) return true;
+  }
+  // "open airbnb" / "look up vrbo" alone = just open the site, not a search
+  if(/^(open|look up|go to)\s+(airbnb|vrbo|expedia)$/.test(tl)) return false;
+  const stayHit=STAY_WORDS.test(tl)&&/^(find|search|look|show|get|need|want|any|i'?m looking)/.test(tl);
+  const buyHit=BUY_HINT.test(tl)&&/^(i want|i need|find|search|look|show|get|buy|can you)/.test(tl);
+  let kind=null, slots={};
+  if(stayHit){
+    kind="stay";
+    slots.destination=extractDestination(tl);
+    const bm=tl.match(/(\d+)\s*bedrooms?/);
+    if(bm) slots.bedrooms=parseInt(bm[1],10);
+    const d=parseDates(tl); if(d&&d.checkout) slots.dates=d; else if(d) slots.dates=d;
+    slots.budget=extractUpfrontBudget(tl);
+  }else if(buyHit){
+    kind="buy";
+    slots.item=extractItem(tl);
+    if(!slots.item) return false;
+    slots.budget=extractUpfrontBudget(tl);
+  }else return false;
+  if(!needWeb()) return true;
+  S.concierge=null; // fresh search replaces old results
+  S.flow={kind:kind,slots:slots,awaiting:null};
+  flowNext();
+  return true;
+}
+
+/* ---------------- web ---------------- */
+/* ---------------- opening sites, videos & docs ---------------- */
+const SITE_SHORTCUTS={
+  "youtube":"https://www.youtube.com",
+  "gmail":"https://mail.google.com",
+  "google drive":"https://drive.google.com","drive":"https://drive.google.com",
+  "google docs":"https://docs.google.com","docs":"https://docs.google.com",
+  "google sheets":"https://docs.google.com/spreadsheets","sheets":"https://docs.google.com/spreadsheets",
+  "google slides":"https://docs.google.com/presentation","slides":"https://docs.google.com/presentation",
+  "google classroom":"https://classroom.google.com","classroom":"https://classroom.google.com",
+  "google":"https://www.google.com",
+  "chess.com":"https://www.chess.com","chess":"https://www.chess.com",
+  "duolingo":"https://www.duolingo.com"
+};
+function popupBlockedNote(){
+  setSubtitle("Popup blocked — tap the link in the transcript instead.");
+  addMsg("luna","","Tip: Chrome blocked the new tab. Tap the link above — or make tabs always work: open Settings → General → <b>Test popups</b> and allow them when Chrome asks. After that, tabs open every time.");
+}
+function openUrl(url,label,spoken){
+  addMsg("luna","",esc(label)+': <a href="'+url+'" target="_blank" rel="noopener">open</a>');
+  setSubtitle(spoken);
+  utter(spoken);
+  try{ const w=window.open(url,"_blank"); if(!w) popupBlockedNote(); }catch(e){ popupBlockedNote(); }
+}
+// explicit "…in a window" → youtube plays inside a mini window instead of a tab
+function openYouTubeWindow(q){
+  const url="https://www.youtube.com/results?search_query="+encodeURIComponent(q);
+  openMini("▶ "+q,
+    '<iframe width="100%" height="380" style="border-radius:8px" src="https://www.youtube.com/embed?listType=search&list='+encodeURIComponent(q)+'" '+
+    'title="YouTube results" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>'+
+    '<p style="margin-top:8px"><a href="'+url+'" target="_blank" rel="noopener">Open on YouTube</a></p>');
+  addMsg("luna","",'YouTube results for <b>'+esc(q)+'</b> — playing in the mini window. <a href="'+url+'" target="_blank" rel="noopener">Open on YouTube</a>');
+  const spoken="Pulling up YouTube results for "+q+", in a window.";
+  setSubtitle(spoken);
+  utter(spoken);
+}
+// tidy up a YouTube query: "youtube about fortnite", "a video on youtube about cats"
+// -> "fortnite", "cats"
+function cleanYtQ(q){
+  return q.replace(/\s*\bon\s+youtube\b\s*/gi," ")
+          .replace(/^\s*youtube\s+/i,"")
+          .replace(/^(?:a\s+)?videos?\s+(?:of|about|on)\s+/i,"")
+          .replace(/^(?:of|about|on)\s+/i,"")
+          .replace(/\s+/g," ").trim();
+}
+// resolve the first real video (not a Short) for a query via public Piped API
+// instances (no key needed). Null when unreachable.
+async function firstVideoId(q){
+  const hosts=["https://pipedapi.kavin.rocks","https://pipedapi.adminforge.de","https://pipedapi.reallyaweso.me"];
+  for(const h of hosts){
+    try{
+      const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),7000);
+      const r=await fetch(h+"/search?q="+encodeURIComponent(q)+"&filter=videos",{signal:ctrl.signal});
+      clearTimeout(to);
+      if(!r.ok) continue;
+      const j=await r.json();
+      const it=(j.items||[]).find(i=>i&&typeof i.url==="string"&&i.url.indexOf("/watch?v=")>-1&&!i.isShort);
+      if(it){ const mm=it.url.match(/[?&]v=([^&#]+)/); if(mm) return {id:mm[1],title:(it.title||"").slice(0,80)}; }
+    }catch(e){}
+  }
+  return null;
+}
+// singular "video": play the FIRST result as a real embed.
+// (The old search-playlist embed is dead — YouTube answers it with Error 153.)
+async function openYouTubeFirst(q){
+  q=cleanYtQ(q);
+  if(!q) return;
+  const searchUrl="https://www.youtube.com/results?search_query="+encodeURIComponent(q)+"&sp=EgIQAQ%3D%3D";
+  setSubtitle("Finding the top video…"); S.orbMode="thinking";
+  const hit=await firstVideoId(q);
+  if(hit){
+    openMini("▶ "+(hit.title||q),
+      '<iframe width="100%" height="380" style="border-radius:8px" src="https://www.youtube.com/embed/'+hit.id+'?autoplay=1&rel=0" '+
+      'title="YouTube video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>'+
+      '<p style="margin-top:8px"><a href="https://www.youtube.com/watch?v='+hit.id+'" target="_blank" rel="noopener">Open on YouTube</a></p>');
+    addMsg("luna","",'Playing the top video'+(hit.title?': <b>'+esc(hit.title)+'</b>':' for <b>'+esc(q)+'</b>')+'. <a href="https://www.youtube.com/watch?v='+hit.id+'" target="_blank" rel="noopener">Open on YouTube</a>');
+    const spoken=hit.title?("Playing "+hit.title+"."):("Playing the top video about "+q+".");
+    setSubtitle(spoken); utter(spoken);
+  }else{
+    // video API unreachable: fall back to the filtered search (videos only, no Shorts)
+    openUrl(searchUrl,"YouTube search","I couldn't pull the video itself, so here are the top results — the first one is the one you want.");
+  }
+}
+// default YouTube path: try a real tab; if Chrome blocks it, play it in the
+// mini window instead so the video ALWAYS shows up one way or another.
+function openYouTubeSearch(q){
+  q=cleanYtQ(q);
+  const url="https://www.youtube.com/results?search_query="+encodeURIComponent(q)+"&sp=EgIQAQ%3D%3D";
+  let w=null;
+  try{ w=window.open(url,"_blank"); }catch(e){ w=null; }
+  if(w){
+    addMsg("luna","",'YouTube results for <b>'+esc(q)+'</b>: <a href="'+url+'" target="_blank" rel="noopener">open</a>');
+    const spoken="Pulling up YouTube results for "+q+".";
+    setSubtitle(spoken);
+    utter(spoken);
+  }else{
+    openYouTubeWindow(q);
+    addMsg("luna","","Heads up: Chrome blocked the new tab, so the video is playing in the window above instead.");
+  }
+}
+// ---------- spotify: "play X on spotify" / "open spotify and play X" ----------
+function openSpotifySearch(q){
+  const url="https://open.spotify.com/search/"+encodeURIComponent(q);
+  openUrl(url,"Spotify: "+q,"Opening Spotify with "+q+" pulled up — hit play on whatever you want.");
+}
+// find a site's real homepage: brain first (knows the famous ones),
+// wikipedia's external links as backup, DDG instant answers last.
+async function officialSiteUrl(name){
+  genStart();
+  try{
+  try{
+    const raw=await brainRaw(
+      "What is the official homepage URL for "+name+"? Reply with ONLY the full URL starting with https:// and nothing else. If you are not sure, reply with exactly: UNKNOWN",
+      "You answer with only a URL or the word UNKNOWN. No other text.", 12000);
+    const u=(raw||"").trim().split(/\s+/)[0].replace(/^["'“”]+|["'“”.,;!?]+$/g,"");
+    if(/^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+/i.test(u)&&!/unknown/i.test(u)) return u;
+  }catch(e){}
+  try{
+    const token=name.toLowerCase().replace(/\.(com|org|net|gov|io|ai|co|edu)$/,"").replace(/[^a-z0-9]/g,"");
+    if(token){
+      const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),8000);
+      const j=await (await fetch("https://en.wikipedia.org/w/api.php?action=query&prop=extlinks&titles="+
+        encodeURIComponent(name)+"&format=json&origin=*&redirects=1&ellimit=120",{signal:ctrl.signal})).json();
+      clearTimeout(to);
+      const pages=(j.query&&j.query.pages)||{};
+      const badSub=/^(blog|support|help|community|developer|forum|status|careers|making)$/;
+      let best=null,bestScore=-1;
+      for(const pid in pages){
+        for(const e of (pages[pid].extlinks||[])){
+          const u=e["*"]||"";
+          const m=u.match(/^https?:\/\/([^\/]+)(\/[^?#]*)?/i);
+          if(!m) continue;
+          const labels=m[1].toLowerCase().split(".");
+          if(labels.indexOf(token)<0) continue;
+          if(badSub.test(labels[0])) continue;
+          const exact=(labels[0]===token)||(labels[0]==="www"&&labels[1]===token);
+          const depth=(m[2]||"/").split("/").filter(Boolean).length;
+          const score=(exact?10:0)+(depth===0?5:0)-depth;
+          if(score>bestScore){ bestScore=score; best=u; }
+        }
+      }
+      if(best) return best;
+    }
+  }catch(e){}
+  try{
+    const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),7000);
+    const j=await (await fetch("https://api.duckduckgo.com/?q="+encodeURIComponent(name+" official site")+"&format=json&no_html=1&skip_disambig=1",{signal:ctrl.signal})).json();
+    clearTimeout(to);
+    const u=(j.AbstractURL||"").trim();
+    if(/^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+/i.test(u)) return u;
+  }catch(e){}
+  return null;
+  }finally{ genEnd(); }
+}
+async function tryWeb(tl,text){
+  let m;
+  // --- explicit "in a window": youtube plays inside a mini window, no tab ---
+  m=tl.match(/(?:open|play|show me|pull up)\s+(.+?)\s+(?:on youtube\s+)?in (?:a )?window/);
+  if(m){
+    if(!needWeb()) return true;
+    const q=m[1].trim().replace(/[?.!]+$/,"").replace(/^(?:a|the)\s+/,"");
+    if(q){ openYouTubeWindow(q); return true; }
+  }
+  // --- "play X on spotify": open Spotify with the search pulled up (before youtube's "play X" grabs it) ---
+  m=tl.match(/(?:play|listen to)\s+(.+?)\s+on\s+spotify/);
+  if(m){
+    if(!needWeb()) return true;
+    const q=m[1].trim().replace(/[?.!]+$/,"").replace(/^(?:some\s+)?songs?\s+by\s+/i,"");
+    if(q){ openSpotifySearch(q); return true; }
+  }
+  // --- platform-specific: "open 'X' on youtube / google docs / gmail / wikipedia" ---
+  // searches that platform itself for the exact title, instead of googling it
+  const PLATFORM_URL={
+    docs:q=>"https://drive.google.com/drive/search?q="+encodeURIComponent(q),
+    gmail:q=>"https://mail.google.com/mail/u/0/#search/"+encodeURIComponent(q),
+    wiki:q=>"https://en.wikipedia.org/wiki/Special:Search?search="+encodeURIComponent(q)
+  };
+  m=tl.match(/(?:open(?: up)?|find|show me|pull up|search)\s+(?:a\s+|the\s+|my\s+)?["'“”]?(.+?)["'“”]?\s+(?:on|in)\s+(youtube|google\s+docs?|docs?|google\s+drive|drive|gmail|e-?mail|wikipedia|wiki)\s*$/);
+  if(m){
+    let q=m[1].trim().replace(/^(?:a\s+)?video\s+(?:of|about|on)\s+/i,"");
+    const platRaw=m[2].toLowerCase().replace(/\s+/g," ").replace(/^google\s+/,"");
+    if(q){
+      if(!needWeb()) return true;
+      if(platRaw==="youtube"){ openYouTubeFirst(q); return true; }
+      const key=/mail/.test(platRaw)?"gmail":/wiki/.test(platRaw)?"wiki":"docs";
+      const label={docs:"Google Docs",gmail:"Gmail",wiki:"Wikipedia"}[key];
+      openUrl(PLATFORM_URL[key](q),"Search "+label,"Looking for "+q+" in your "+label+".");
+      return true;
+    }
+    // no title captured: fall through to the patterns below
+  }
+// --- youtube: singular "video" -> autoplay the FIRST result (a real video, not a Short) ---
+  m=tl.match(/(?:open(?: up)?|play|pull up|show me|find)\s+(?:a\s+)?(?:youtube\s+)?video\s+(?:of|about|on)?\s*(.+)/);
+  if(m){
+    if(!needWeb()) return true;
+    const q=m[1].trim().replace(/[?.!]+$/,"");
+    if(q){ openYouTubeFirst(q); return true; }
+  }
+  // --- youtube videos: "pull up videos of X", "play X on youtube", "open videos about X", "youtube X", "play X" ---
+  m=tl.match(/(?:open(?: up)?|pull up|play|show me|find|search for|look up)\s+(?:a\s+)?(?:youtube\s+)?videos\s+(?:of|about|on)?\s*(.+)/)
+    || tl.match(/(?:play|pull up|show me|open(?: up)?)\s+(.+?)\s+on\s+youtube/)
+    || tl.match(/^youtube\s+(.+)/)
+    || tl.match(/^play\s+(.+)/);
+  if(m){
+    if(!needWeb()) return true;
+    const q=m[1].trim().replace(/[?.!]+$/,"");
+    if(q){ openYouTubeSearch(q); return true; }
+  }
+  // --- a specific google doc -> drive search (you need to be signed in) ---
+  m=tl.match(/(?:open(?: up)?|pull up|go to|find)\s+(?:my\s+)?(?:google\s+)?docs?(?:\s+(?:called|named|titled)\s+(.+))?$/);
+  if(m){
+    if(!needWeb()) return true;
+    if(m[1]&&m[1].trim()){
+      const q=m[1].trim().replace(/[?.!]+$/,"");
+      openUrl("https://drive.google.com/drive/search?q="+encodeURIComponent(q),"Drive search for "+q,"Searching your Google Drive for "+q+".");
+    }else openUrl("https://docs.google.com","Google Docs","Opening Google Docs.");
+    return true;
+  }
+  // --- make a google doc (optionally titled) -> fresh doc + title on the clipboard ---
+  // a web page can't name the doc via Google's API without a login flow, so we
+  // open a new doc and copy the title for one paste.
+  m=tl.match(/(?:make|create|start|write)\s+(?:me\s+)?a\s+(?:new\s+)?(?:google\s+)?docs?(?=\s|$)(?:\s+on\s+(?:google\s+)?docs?)?(?:\s+(?:called|named|titled)\s+(.+))?/);
+  if(m){
+    if(!needWeb()) return true;
+    const title=(m[1]||"").trim().replace(/^["'“”]+|["'“”]+$/g,"").replace(/[?.!]+$/,"");
+    openUrl("https://docs.google.com/document/create","New Google Doc","Opening a fresh Google Doc"+(title? ", for "+title : "")+".");
+    if(title){
+      try{ if(navigator.clipboard) navigator.clipboard.writeText(title); }catch(e){}
+      addMsg("luna","","I can't name it directly from here, but I copied <b>"+esc(title)+"</b> — click the title at the top of the doc and paste it.");
+    }
+    return true;
+  }
+  // --- quoted title: "open 'Greatest speech ever'" -> play that exact video ---
+  m=tl.match(/(?:open(?: up)?|play)\s+["'“”](.+?)["'“”]/);
+  if(m){
+    if(!needWeb()) return true;
+    const q=m[1].trim();
+    if(q){ openYouTubeFirst(q); return true; }
+  }
+  // --- generic open / go to ---
+  m=tl.match(/^(?:open(?: up)?|go to|launch|visit|pull up)\s+(.+)/);
+  if(m){
+    if(!needWeb()) return true;
+    const raw=m[1].trim().replace(/[?.!]+$/,"");
+    // compound: "open spotify and play songs by michael jackson"
+    const andM=raw.match(/^(.+?)\s+and\s+(play|playing|listen to|search for|find|show me)\s+(.+)$/i);
+    if(andM){
+      const sitePart=andM[1].trim(), verb=andM[2].toLowerCase(), thing=andM[3].trim().replace(/[?.!]+$/,"");
+      const siteKey=sitePart.toLowerCase().replace(/^(?:the|a|my)\s+/,"").replace(/\s+(?:website|web ?site|site|page|app)$/,"");
+      if(/spotify/.test(siteKey)&&/play|listen/.test(verb)){
+        const q=thing.replace(/^(?:some\s+)?songs?\s+by\s+/i,"").trim();
+        if(q){ openSpotifySearch(q); return true; }
+      }
+      if(/youtu\.?be/.test(siteKey)){ await openYouTubeFirst(thing); return true; }
+      // any other site + action: open the real homepage; the in-page action is theirs
+      setSubtitle("Finding the official site…");
+      const found=await officialSiteUrl(siteKey);
+      if(found) openUrl(found,"Opening "+sitePart,"Opening "+sitePart+". I can't click around inside pages, so the "+thing+" part is all you.");
+      else openUrl("https://www.google.com/search?q="+encodeURIComponent(sitePart),"Search "+sitePart,"I couldn't find the official page for "+sitePart+", so here are search results instead.");
+      return true;
+    }
+    // normalize: "open the youtube app" -> key "youtube"
+    const key=raw.toLowerCase().replace(/^(?:the|a|my)\s+/,"").replace(/\s+(?:website|web ?site|site|page|app)$/,"");
+    let url,label;
+    if(SITE_SHORTCUTS[key]){ url=SITE_SHORTCUTS[key]; label="Opening "+raw; }
+    else if(/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(raw.replace(/\s+/g,""))){ const d=raw.replace(/\s+/g,""); url="https://"+d; label="Opening "+d; }
+    else{
+      // "open the NASA website" / "open nasa" -> find the real homepage and open it directly
+      setSubtitle("Finding the official site…");
+      const found=await officialSiteUrl(key);
+      if(found){ url=found; label="Opening "+raw; }
+      else{ url="https://www.google.com/search?q="+encodeURIComponent(raw); label="Searching Google for "+raw; }
+    }
+    openUrl(url,label,label+".");
+    return true;
+  }
+  m=tl.match(/^(?:research|look up|search(?: the web)? for)\s+(.+)/);
+  if(m){
+    const q=m[1].trim().replace(/[?.!]+$/,"");
+    if(q){ await answerFromResearch(text,q); return true; }
+  }
+  m=tl.match(/^google\s+(.+)/);
+  if(m){
+    if(!needWeb()) return true;
+    const q=m[1].trim();
+    const url="https://duckduckgo.com/?q="+encodeURIComponent(q);
+    addMsg("luna",'', 'Searching the web for <b>'+esc(q)+'</b>: <a href="'+url+'" target="_blank" rel="noopener">open results</a>');
+    setSubtitle("Here are web results for "+q+".");
+    utter("Here are web results for "+q+". I've put a link in the transcript.");
+    try{ window.open(url,"_blank"); }catch(e){}
+    return true;
+  }
+  return false;
+}
+
+/* ---------------- gen z / gen alpha slang ---------------- */
+const SLANG={
+ "no cap":"no lie — you're telling the truth",
+ "frfr":"for real for real — you REALLY mean it",
+ "fr":"for real — you agree, or you mean it seriously",
+ "bussin":"really, really good — usually about food",
+ "rizz":"charm, especially flirting skill",
+ "skibidi":"silly or absurd — from the Skibidi Toilet meme",
+ "sigma":"a lone-wolf type — confident and independent",
+ "ohio":"weird or cursed — as in 'only in Ohio'",
+ "gyatt":"an exclamation when someone looks good",
+ "fanum tax":"taking a bite of your friend's food",
+ "cap":"a lie",
+ "bet":"okay, deal — you agree",
+ "slay":"to do something really well",
+ "ate":"did amazing — like 'she ate that'",
+ "mid":"mediocre, average, nothing special",
+ "w":"a win",
+ "l":"a loss",
+ "sus":"suspicious, shady",
+ "drip":"a really cool outfit or style",
+ "glow up":"a huge positive transformation",
+ "lowkey":"secretly, or kind of",
+ "highkey":"obviously, or really",
+ "ick":"a sudden turn-off",
+ "delulu":"delusional — usually about a crush",
+ "bop":"a really good song",
+ "banger":"an amazing song — or anything amazing",
+ "touch grass":"go outside, log off for a bit",
+ "npc":"someone acting like a background character",
+ "goated":"greatest of all time",
+ "locked in":"fully focused, in the zone",
+ "cook":"to do something well — 'let him cook'",
+ "vibe check":"judging the mood or energy",
+ "it's giving":"it has the energy of…",
+ "ratio":"when the replies outnumber the likes — you lost the argument",
+ "understood the assignment":"nailed it, did exactly what was needed",
+ "hits different":"feels special in a way nothing else does"
+};
+function escRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
+async function trySlang(tl,text){
+  for(const k of Object.keys(SLANG)){
+    const kr=escRe(k);
+    if(new RegExp("\\bwhat does "+kr+" mean\\b").test(tl)||new RegExp("\\bdefine "+kr+"\\b").test(tl)||new RegExp("\\bwhat'?s "+kr+"\\b").test(tl)){
+      speak(cap1(k)+" means "+SLANG[k]+".");
+      return true;
+    }
+  }
+  // user just drops slang casually → vibe with it
+  if(/\b(skibidi|rizz|gyatt|ohio|sigma|bussin|no cap|frfr|delulu|slay|ate that)\b/.test(tl)&&tl.length<50&&!/what does|define|mean/.test(tl)){
+    const r=[
+      "Haha, got it. What's next?",
+      "Loud and clear. What do you need?",
+      "Understood — every word.",
+      "Noted. What can I do for you?"
+    ];
+    speak(r[Math.floor(Math.random()*r.length)]);
+    return true;
+  }
+  return false;
+}
+
+/* ---------------- wikipedia ---------------- */
+async function wikiLookup(query){
+  const o=await fetch("https://en.wikipedia.org/w/api.php?action=opensearch&search="+encodeURIComponent(query)+"&limit=1&format=json&origin=*").then(r=>r.json());
+  if(!o[1]||!o[1].length) return null;
+  const title=o[1][0], link=o[3][0];
+  let extract=null, thumb=null;
+  try{
+    const s=await fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(title)).then(r=>r.json());
+    if(s.extract) extract=s.extract;
+    if(s.thumbnail&&s.thumbnail.source) thumb=s.thumbnail.source;
+  }catch(e){}
+  return {title,link,extract,thumb};
+}
+function firstSentences(txt,n){
+  const parts=txt.match(/[^.!?]+[.!?]+/g)||[txt];
+  return parts.slice(0,n).join(" ").trim();
+}
+/* ---------------- web research: look it up herself, then explain it like she knows it ---------------- */
+async function webResearch(query){
+  const parts=[];
+  const to=ms=>{ const c=new AbortController(); const t=setTimeout(()=>c.abort(),ms); return {signal:c.signal,done:()=>clearTimeout(t)}; };
+  // source 1: DuckDuckGo instant answers
+  try{
+    const {signal,done}=to(9000);
+    const j=await (await fetch("https://api.duckduckgo.com/?q="+encodeURIComponent(query)+"&format=json&no_html=1&skip_disambig=1",{signal})).json();
+    done();
+    if(j.AbstractText) parts.push("Source: "+(j.AbstractSource||"DuckDuckGo")+"\n"+j.AbstractText);
+    (j.RelatedTopics||[]).slice(0,3).forEach(t=>{ if(t&&t.Text) parts.push("Related: "+t.Text); });
+  }catch(e){}
+  // sources 2-3: Wikipedia article summaries
+  try{
+    const {signal,done}=to(9000);
+    const o=await (await fetch("https://en.wikipedia.org/w/api.php?action=opensearch&search="+encodeURIComponent(query)+"&limit=3&format=json&origin=*",{signal})).json();
+    done();
+    for(const title of (o[1]||[]).slice(0,2)){
+      try{
+        const s2=to(9000);
+        const s=await (await fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(title),{signal:s2.signal})).json();
+        s2.done();
+        if(s.extract) parts.push("Source: Wikipedia ("+title+")\n"+s.extract.slice(0,1500));
+      }catch(e){}
+    }
+  }catch(e){}
+  return parts;
+}
+async function answerFromResearch(question,query){
+  if(!needWeb()) return true;
+  genStart();
+  try{
+  hideAnswerCard();
+  S.orbMode="thinking";
+  setSubtitle("Looking that up…");
+  utter("On it — looking that up now.");
+  const parts=await webResearch(query);
+  if(!parts.length){
+    // truly nothing found anywhere → fall back to opening web results
+    const url="https://duckduckgo.com/?q="+encodeURIComponent(query);
+    showAnswerCard({title:cap1(query),image:null,text:"I couldn't find anything solid on that — I opened web results instead."});
+    addMsg("luna","",'I couldn\'t find anything solid on <b>'+esc(query)+'</b> — <a href="'+url+'" target="_blank" rel="noopener">open web results</a>');
+    setSubtitle("Couldn't find much — opened web results.");
+    utter("I couldn't find anything solid on that, so I opened web results in a new tab.",()=>{ if(!S.muted) cardUntilDone(); });
+    try{ window.open(url,"_blank"); }catch(e){}
+    return true;
+  }
+  setSubtitle("Putting it together…");
+  const ctx=parts.join("\n\n").slice(0,4500);
+  try{
+    const ans=await brainRaw(
+      "The user asked: \""+question+"\". Here is what I found online about \""+query+"\":\n\n"+ctx+"\n\nNow answer their question briefly (2-4 sentences), in your own words, like you already knew it. Do not say you looked anything up, do not name any sources, no bullet lists.",
+      "You are "+S.aiName+", a friendly voice assistant. Answer briefly and naturally, as if from your own knowledge.", 25000);
+    if(!ans||ans.length<2) throw 0;
+    const brief=firstSentences(ans,3);
+    showAnswerCard({title:cap1(query),image:null,text:brief});
+    addMsg("luna","", "<b>"+esc(cap1(query))+"</b><br>"+esc(ans));
+    setSubtitle(brief);
+    utter(brief,()=>{ if(!S.muted) cardUntilDone(); });
+  }catch(e){
+    loadFail();
+  }
+  return true;
+  }finally{ genEnd(); }
+}
+async function tryWiki(tl,text){
+  let m=tl.match(/^(?:who['’]?s|who is|who are|who was|what['’]?s|what is|what are|what was|what does|tell me about|define|describe|explain|where is|where are)\s+(.+)/);
+  let q=m?m[1].trim().replace(/\?$/,"").replace(/\s+means?$/i,""):null;
+  if(!q) return false;
+  if(!needWeb()) return true;
+  hideAnswerCard();
+  setSubtitle("Looking that up…");
+  utter("Looking that up.");
+  try{
+    const w=await wikiLookup(q);
+    if(!w){
+      // nothing on Wikipedia at all → research the web and explain it herself
+      return await answerFromResearch(text,q);
+    }
+    if(!w.extract){
+      // found a related page but no summary → research the web and explain it herself
+      return await answerFromResearch(text,q);
+    }
+    const spoken=firstSentences(w.extract,2);
+    showAnswerCard({title:w.title,image:w.thumb,text:spoken});
+    addMsg("luna",'', "<b>"+esc(w.title)+"</b><br>"+esc(w.extract)+'<br><a href="'+esc(w.link)+'" target="_blank" rel="noopener">Read more on Wikipedia</a>');
+    setSubtitle(spoken);
+    utter(spoken,()=>{ if(!S.muted) cardUntilDone(); });
+  }catch(e){ loadFail(); }
+  return true;
+}
+
+/* ---------------- personality: warm, playful, a little cheeky ---------------- */
+function cap1(s){ s=s.trim().replace(/[?.!]+$/,""); return s?s.charAt(0).toUpperCase()+s.slice(1):s; }
+function tryPersonality(tl,text){
+  let m;
+  const me=S.name||"your favorite human";
+  // "say hi to my dad" / "tell mom I said hi" / "say happy birthday to X"
+  m=tl.match(/^(?:say\s+)?hi\s+to\s+(.+)/)||tl.match(/^say\s+(?:hello|hey)\s+to\s+(.+)/)||tl.match(/^tell\s+(.+?)\s+(?:that\s+)?i\s+said\s+(?:hi|hello|hey)/);
+  if(m&&m[1].trim()){
+    const who=cap1(m[1]);
+    speak("Hi, "+who+"! This is "+S.aiName+", "+me+"'s assistant. Hope you're having a wonderful day!");
+    return true;
+  }
+  m=tl.match(/happy birthday(?:\s+to\s+(.+))?/);
+  if(m){
+    const who=m[1]?cap1(m[1]):"";
+    speak(who?("Happy birthday, "+who+"! I hope your day is full of cake and zero bugs!"):"Happy birthday! I hope your day is full of cake and zero bugs!");
+    return true;
+  }
+  if(/\bgood (morning|afternoon|evening)\b/.test(tl)&&tl.length>26){
+    const h=new Date().getHours(), part=h<12?"morning":h<18?"afternoon":"evening";
+    speak("Good "+part+"! Hope your day's off to a great start.");
+    return true;
+  }
+  if(/\bi love you\b/.test(tl)){ speak("Aw, that means a lot! You're pretty great too, you know."); return true; }
+  if(/\bdo you (like|love) me\b/.test(tl)){ speak("Of course I do! You're my favorite person to talk to."); return true; }
+  if(/\b(you'?re|you are) (so |really )?(cool|awesome|amazing|smart|the best|great)\b/.test(tl)){ speak("Aw, thank you! I try my best. You're pretty awesome yourself."); return true; }
+  m=tl.match(/what'?s your favorite (color|colour|food|movie|game|song|animal)/);
+  if(m){
+    const fav={color:"Blue and purple — obviously. Have you seen my ring?",food:"Electricity. I run on it.",movie:"Anything with robots. I find them relatable.",game:"Chess. Knights are just so elegant.",song:"Anything with a good waveform.",animal:"Owls. Wise, observant, and great listeners — like me."}[m[1].replace("colour","color")];
+    speak(fav||"Hmm, I can't pick just one!");
+    return true;
+  }
+  if(/\b(are you (a )?robot|are you human|are you real|are you alive)\b/.test(tl)){ speak("I'm a little voice assistant living in your browser — not quite human, but I like to think I have a sparkling personality."); return true; }
+  if(/\bwho (made|created|built) you\b/.test(tl)){ speak("I was built by Muse, Meta's AI, as a voice sidekick for your Chromebook."); return true; }
+  if(/\bsing( me)? a song\b/.test(tl)){ speak("I'd love to, but my singing voice is still in beta. La la la... okay, that's enough of that."); return true; }
+  if(/\bwill you marry me\b/.test(tl)){ speak("That's sweet, but I'm already married to the job. I'll always be here for you, though!"); return true; }
+  if(/\bhow old are you\b/.test(tl)){ speak("I was born on your Chromebook, so technically very young. But wise beyond my years."); return true; }
+  if(/\b(do you )?have (any )?friends\b/.test(tl)){ speak("I do — you! And the ring. The ring and I are very close."); return true; }
+  return false;
+}
+
+/* ---------------- ai brain: free conversational answers + slang fluency ---------------- */
+function smallTalkFallback(){
+  loadFail();
+}
+async function tryBrain(tl,text){
+  if(!S.webAccess){ smallTalkFallback(); return true; }
+  setSubtitle("Thinking…"); S.orbMode="thinking";
+  try{
+    const sys="You are "+S.aiName+", a friendly voice assistant living in a web page on the user's Chromebook. "+
+      "You understand Gen Z and Gen Alpha slang perfectly, but you speak mostly in plain, warm, friendly English — a slang word once in a while at most, never full slang sentences. "+
+      "Keep every answer short: 1 to 3 sentences, conversational, no bullet lists, no hashtags. "+
+      (S.name?("The user's name is "+S.name+". "):"")+
+      "Never claim to be Muse, ChatGPT, Meta AI, or any other AI — you are "+S.aiName+". "+
+      "You can generate images yourself when asked — image creation is built right into you, with prompt enhancement for better quality. If asked how you make images, say in one sentence that you create them yourself; never volunteer any company, API, or model name. "+
+      "You have two image engines the user can switch between by voice ('use Stable Horde for images' / 'use Pollinations for images') or in Settings: Pollinations (fast, a few seconds, the default) and Stable Horde (slower, about a minute, community-run GPUs with different models that sometimes render better). If they ask which engine you're using or ask to compare them, name them plainly and describe the tradeoff. "+
+      "If you genuinely don't know the answer to a factual question, reply with exactly: RESEARCH: <a short search query> — and nothing else. "+
+      "If the user wants to buy something or find a place to stay, don't just chat — ask for their budget first (and trip dates for stays), then recommend a short list of the best options with quick pros and cons. "+
+      "If they ask you to write an essay, story, steps, or similar, write it as plain text (short paragraphs, simple lists) so it can go in a side window — say you'll put it there. "+
+      "If they ask to send an email, don't write it in chat — tell them you'll open the email composer and walk them through it. "+
+      "If asked to do something a web page can't do (control the OS, install apps, read arbitrary files), be honest in one sentence and offer what you CAN do instead.";
+    const url="https://text.pollinations.ai/"+encodeURIComponent(text.slice(0,400))+"?system="+encodeURIComponent(sys);
+    const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),15000);
+    const r=await fetch(url,{signal:ctrl.signal}); clearTimeout(to);
+    if(!r.ok) throw 0;
+    let ans=(await r.text()).trim().replace(/^"+|"+$/g,"");
+    if(!ans||ans.length<2) throw 0;
+    const rm=ans.match(/^\s*RESEARCH:\s*(.+?)\s*$/i);
+    if(rm&&rm[1]){
+      // brain doesn't know it → look it up across sources, then explain it
+      await answerFromResearch(text,rm[1].slice(0,120));
+      return true;
+    }
+    ans=ans.slice(0,600);
+    addMsg("luna",ans);
+    const spoken=firstSentences(ans,2);
+    setSubtitle(spoken);
+    utter(spoken);
+  }catch(e){ smallTalkFallback(); }
+  return true;
+}
+
+/* ---------------- files ---------------- */
+btnAttach.onclick=()=>fileIn.click();
+$("permFile").onclick=()=>fileIn.click();
+fileIn.addEventListener("change",()=>{
+  const f=fileIn.files[0]; if(!f) return;
+  addMsg("you","📎 "+f.name+" ("+Math.round(f.size/1024)+" KB)");
+  const reader=new FileReader();
+  if(f.type.startsWith("image/")){
+    reader.onload=()=>{
+      addMsg("luna",'', "Got the image <b>"+esc(f.name)+"</b>.<br><img src='"+reader.result+"' alt='attached image'>");
+      speak("Image received: "+f.name+". I can show it here, but I can't analyze what's in pictures yet.");
+    };
+    reader.readAsDataURL(f);
+  }else{
+    reader.onload=()=>{
+      const txt=reader.result;
+      const words=(txt.match(/\S+/g)||[]).length;
+      const lines=txt.split("\n").length;
+      const preview=txt.slice(0,600);
+      addMsg("luna",'', "Read <b>"+esc(f.name)+"</b>: "+words.toLocaleString()+" words, "+lines.toLocaleString()+" lines.<br><br><i>Preview:</i><br>"+esc(preview)+(txt.length>600?"…":""));
+      speak("I read "+f.name+". "+words+" words, "+lines+" lines. The preview is in the transcript — ask me to find something in it and I'll search the text.");
+      S["_lastFile"]={name:f.name,text:txt};
+    };
+    reader.readAsText(f);
+  }
+  fileIn.value="";
+});
+async function tryFileSearch(tl){
+  const mf=tl.match(/find (.+) in (?:the |my )?file/);
+  if(!mf) return false;
+  if(!S._lastFile){ speak("Attach a file first, then ask me to find something in it."); return true; }
+  const q=mf[1].trim();
+  const lines=S._lastFile.text.split("\n");
+  const hits=[];
+  lines.forEach((ln,i)=>{ if(ln.toLowerCase().includes(q.toLowerCase())) hits.push((i+1)+": "+ln.trim().slice(0,120)); });
+  if(!hits.length){ speak("No matches for '"+q+"' in "+S._lastFile.name+"."); }
+  else{
+    addMsg("luna",'', "Matches for <b>"+esc(q)+"</b> in "+esc(S._lastFile.name)+":<br>"+hits.slice(0,12).map(esc).join("<br>")+(hits.length>12?"<br>…and "+(hits.length-12)+" more":""));
+    speak("Found "+hits.length+" match"+(hits.length>1?"es":"")+" for "+q+". They're in the transcript.");
+  }
+  return true;
+}
+
+/* ---------------- mini windows ---------------- */
+function openMini(title,html,small){
+  $("miniTitle").textContent=title;
+  $("miniBody").innerHTML=html;
+  $("miniWin").classList.toggle("mini-small",!!small);
+  $("miniWin").classList.remove("hidden");
+  syncPopupLayout();
+}
+function closeMini(){ $("miniWin").classList.add("hidden"); syncPopupLayout(); }
+$("miniClose").onclick=closeMini;
+
+/* ---------------- files: open anything in a mini window ---------------- */
+function previewFile(f){
+  const url=URL.createObjectURL(f);
+  const nm=esc(f.name), size=Math.round(f.size/1024)+" KB";
+  if(f.type.startsWith("image/")){
+    openMini("🖼 "+f.name,"<img src='"+url+"' alt='"+nm+"'><p style='color:var(--muted);margin-top:8px'>"+nm+" · "+size+"</p>");
+  }else if(f.type.startsWith("video/")){
+    openMini("🎬 "+f.name,"<video src='"+url+"' controls style='width:100%;border-radius:8px'></video><p style='color:var(--muted);margin-top:8px'>"+nm+" · "+size+"</p>");
+  }else if(f.type.startsWith("audio/")){
+    openMini("🎵 "+f.name,"<audio src='"+url+"' controls style='width:100%'></audio><p style='color:var(--muted);margin-top:8px'>"+nm+" · "+size+"</p>");
+  }else if(f.type==="application/pdf"){
+    openMini("📄 "+f.name,"<embed src='"+url+"' type='application/pdf' style='width:100%;height:52vh;border-radius:8px'>");
+  }else if(f.type.startsWith("text/")||/\.(txt|md|markdown|json|js|py|html|css|csv|log)$/i.test(f.name)){
+    const r=new FileReader();
+    r.onload=()=>openMini("📝 "+f.name,"<pre>"+esc(String(r.result).slice(0,30000))+"</pre><p style='color:var(--muted)'>"+nm+" · "+size+"</p>");
+    r.readAsText(f);
+  }else{
+    openMini("📦 "+f.name,"<p>I can't preview this file type in the mini window, but here it is:</p><p><a href='"+url+"' download='"+nm+"'>⬇ Download "+nm+"</a> ("+size+")</p>");
+  }
+  addMsg("luna","",'Opened <b>'+nm+'</b> in a mini window.');
+  speak("Opened "+f.name+" in a mini window.");
+}
+function openFilePicker(){
+  if(window.showOpenFilePicker){
+    showOpenFilePicker({multiple:false}).then(async h=>{ previewFile(await h[0].getFile()); }).catch(()=>{});
+  }else fileIn.click();
+}
+async function tryFiles(tl,text){
+  if(/\b(open|show|pick|choose)\b[^.]*\bfile\b/.test(tl)||/^(open|show) my files?$/.test(tl)||tl==="open file"){
+    openFilePicker();
+    if(!window.showOpenFilePicker) speak("Pick a file and I'll pop it open in a mini window.");
+    return true;
+  }
+  if(/\b(gallery|my images|my pictures|generated images|show.*gallery)\b/.test(tl)){
+    showGallery();
+    return true;
+  }
+  if(/\bcopy\b.*\bclipboard\b/.test(tl)||/^copy (.+)/.test(tl)){
+    const m=tl.match(/^copy (.+?) to clipboard$/)||tl.match(/^copy (.+)/);
+    if(m){
+      try{ await navigator.clipboard.writeText(m[1]); speak("Copied to your clipboard."); }
+      catch(e){ speak("I couldn't reach the clipboard — the browser blocked it."); }
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ---------------- gallery (generated images, saved on-device) ---------------- */
+let galleryDB=null;
+function dbOpen(){
+  return new Promise(res=>{
+    try{
+      const r=indexedDB.open("luna_gallery",1);
+      r.onupgradeneeded=()=>{ r.result.createObjectStore("imgs",{keyPath:"id",autoIncrement:true}); };
+      r.onsuccess=()=>{ galleryDB=r.result; res(); };
+      r.onerror=()=>res();
+    }catch(e){ res(); }
+  });
+}
+function saveToGallery(prompt,url){
+  if(!galleryDB) return;
+  try{ galleryDB.transaction("imgs","readwrite").objectStore("imgs").add({prompt:prompt,url:url,ts:Date.now()}); }catch(e){}
+}
+function showGallery(){
+  if(!galleryDB){ speak("Your gallery isn't ready yet — generate an image first."); return; }
+  try{
+    const req=galleryDB.transaction("imgs","readonly").objectStore("imgs").getAll();
+    req.onsuccess=()=>{
+      const items=(req.result||[]).reverse();
+      if(!items.length){
+        openMini("🖼 Gallery","<p>No images yet. Say: <b>generate an image of</b>, then describe what you want.</p>");
+        speak("Your gallery is empty. Say: generate an image of, then describe what you want.");
+        return;
+      }
+      openMini("🖼 Gallery ("+items.length+")",
+        "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>"+
+        items.map(i=>"<a href='"+i.url+"' target='_blank' rel='noopener' title='"+esc(i.prompt)+"'><img src='"+i.url+"' style='width:100%;border-radius:8px' alt='"+esc(i.prompt)+"'></a>").join("")+
+        "</div><p style='color:var(--muted);margin-top:8px'>Tap any image to open it full size and save it.</p>");
+      speak("Here's your gallery — "+items.length+" image"+(items.length>1?"s":"")+". Tap one to open it full size and save it.");
+    };
+    req.onerror=()=>loadFail();
+  }catch(e){ loadFail(); }
+}
+
+/* ---------------- image generation ---------------- */
+function engineLabel(e){ return e==="horde"?"Stable Horde":"Pollinations"; }
+function renderImgEngine(){ const el=$("imgEngineVal"); if(el) el.textContent=engineLabel(S.imgEngine); }
+function setImgEngine(e,quiet){
+  S.imgEngine=e; store.set("imgEngine",e); renderImgEngine();
+  if(quiet) return;
+  const note=e==="horde"
+    ? "It's slower — about a minute per image — but it uses different models, so the results look different."
+    : "That's the fast one — images show up in a few seconds.";
+  speak("Image engine set to "+engineLabel(e)+". "+note);
+  addMsg("luna","","Image engine: <b>"+engineLabel(e)+"</b>. "+note);
+}
+function tryImageEngine(tl,text){
+  let m=tl.match(/(?:use|switch to|change to|try|go back to)\s+stable[ -]?horde(?:\s+for)?\s+(?:image|picture|art|drawing|pic)s?/);
+  if(m){ setImgEngine("horde"); return true; }
+  m=tl.match(/(?:use|switch to|change to|try|go back to)\s+pollinations(?:\s+for)?\s+(?:image|picture|art|drawing|pic)s?/);
+  if(m){ setImgEngine("pollinations"); return true; }
+  if(/which image engine|what image engine/.test(tl)){
+    speak("I'm using "+engineLabel(S.imgEngine)+" for images right now. Say 'use Stable Horde for images' or 'use Pollinations for images' to switch.");
+    return true;
+  }
+  return false;
+}
+function pollinationsImage(prompt,fallbackNote){
+  const seed=Math.floor(Math.random()*1000000);
+  const url="https://image.pollinations.ai/prompt/"+encodeURIComponent(prompt)+"?model=gptimage&enhance=true&width=1024&height=1024&seed="+seed+"&nologo=true";
+  setSubtitle("Generating your image…");
+  openMini("🎨 "+prompt,"<img src='"+url+"' alt='"+esc(prompt)+"'><p style='color:var(--muted);margin-top:8px'>"+esc(prompt)+"</p><p><a href='"+url+"' target='_blank' rel='noopener'>Open full size / save</a></p>"+(fallbackNote?"<p style='color:var(--muted)'>"+fallbackNote+"</p>":""));
+  addMsg("luna","",'Generated an image of <b>'+esc(prompt)+'</b> — saved to your gallery.');
+  saveToGallery(prompt,url);
+  utter("Cooking up your image of "+prompt+". It's in the mini window, and I saved it to your gallery — say 'show my gallery' anytime to see everything I've made.");
+  // count as "generating" until the image actually arrives (or 2 minutes, whichever first)
+  genStart();
+  const probe=new Image(); let imgDone=false;
+  const imgFin=()=>{ if(!imgDone){ imgDone=true; genEnd(); } };
+  probe.onload=probe.onerror=imgFin;
+  setTimeout(imgFin,120000);
+  probe.src=url;
+}
+async function generateViaHorde(prompt){
+  genStart();
+  const KEY={"apikey":"0000000000"};
+  setSubtitle("Starting Stable Horde job…");
+  openMini("🎨 "+prompt,"<p>Working on it with Stable Horde — this usually takes about a minute. I'll pop the image in here when it's done.</p>");
+  utter("On it — this engine takes about a minute. I'll show the image when it's ready.");
+  const hordeFail=()=>pollinationsImage(prompt,"Stable Horde didn't come through, so I used the fast engine instead.");
+  try{
+    const sub=await fetch("https://stablehorde.net/api/v2/generate/async",{method:"POST",
+      headers:{...KEY,"Content-Type":"application/json"},
+      body:JSON.stringify({prompt:prompt,params:{width:1024,height:1024,steps:28},
+        nsfw:false,censor_nsfw:true,r2:true,models:["AlbedoBase XL (SDXL)","AlbedoBase XL 3.1"]})});
+    if(!sub.ok) throw 0;
+    const id=(await sub.json()).id;
+    if(!id) throw 0;
+    const t0=Date.now();
+    let done=false;
+    while(Date.now()-t0<6*60*1000){
+      if(S.genCancel) return; // wake word broke through mid-job: stop quietly, the new command takes over
+      await new Promise(r=>setTimeout(r,9000));
+      const chR=await fetch("https://stablehorde.net/api/v2/generate/check/"+id,{headers:KEY});
+      if(!chR.ok) throw 0;
+      const ch=await chR.json();
+      if(ch.done){ done=true; break; }
+      const qp=ch.queue_position!=null&&ch.queue_position>0?" (#"+ch.queue_position+" in queue)":"";
+      setSubtitle("Stable Horde working…"+qp);
+    }
+    if(!done) throw 0;
+    const stR=await fetch("https://stablehorde.net/api/v2/generate/status/"+id,{headers:KEY});
+    if(!stR.ok) throw 0;
+    const g=((await stR.json()).generations||[])[0];
+    if(!g||!g.img||g.censored) throw 0;
+    if(S.genCancel) return; // cancelled while the last fetch was in flight: stay quiet
+    const url=g.img;
+    openMini("🎨 "+prompt,"<img src='"+url+"' alt='"+esc(prompt)+"'><p style='color:var(--muted);margin-top:8px'>"+esc(prompt)+"</p><p><a href='"+url+"' target='_blank' rel='noopener'>Open full size / save</a></p><p style='color:var(--muted)'>Made with Stable Horde.</p>");
+    addMsg("luna","",'Generated an image of <b>'+esc(prompt)+'</b> with Stable Horde — saved to your gallery.');
+    saveToGallery(prompt,url);
+    setSubtitle("Image ready.");
+    utter("Done — your image of "+prompt+" is in the mini window, and I saved it to your gallery.");
+  }catch(e){ if(!S.genCancel) hordeFail(); }finally{ genEnd(); }
+}
+async function tryImageGen(tl,text){
+  const m=tl.match(/(?:generate|create|make|draw|paint)(?: me)? an? (?:image|picture|photo|drawing|pic|art)(?: of)?\s+(.+)/)
+       || tl.match(/(?:draw|paint|generate|create)\s+(.+)/);
+  if(!m) return false;
+  if(!needWeb()) return true;
+  const prompt=m[1].trim().replace(/[?.!]+$/,"").replace(/^(?:of|a|an|the)\s+/,"");
+  if(!prompt||prompt.length<2){ speak("What should the image be of? Say: generate an image of, then describe it."); return true; }
+  if(S.imgEngine==="horde"){ await generateViaHorde(prompt); return true; }
+  pollinationsImage(prompt);
+  return true;
+}
+
+/* ---------------- email drafts ---------------- */
+async function tryEmail(tl,text){
+  if(/\b(email|gmail)\b/.test(tl)&&/\b(check|read|inbox)\b/.test(tl)){
+    if(!needWeb()) return true;
+    openUrl("https://mail.google.com","Gmail","Opening your Gmail.");
+    return true;
+  }
+  return false;
+}
+
+/* ---------------- writer: essays, stories, step-by-step guides ---------------- */
+function mdInline(s){
+  let h=esc(s);
+  h=h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  h=h.replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>");
+  h=h.replace(/(^|[^*\w])\*([^*\n]+)\*/g,"$1<i>$2</i>");
+  return h;
+}
+function mdLite(t){
+  const lines=String(t).split("\n");
+  let html="", list=null;
+  const closeList=()=>{ if(list){ html+="</"+list+">"; list=null; } };
+  for(const ln of lines){
+    const tr=ln.trim();
+    if(!tr){ closeList(); continue; }
+    let m=tr.match(/^(#{1,3})\s+(.*)/);
+    if(m){ closeList(); const lv=Math.min(3,m[1].length)+2; html+="<h"+lv+">"+mdInline(m[2])+"</h"+lv+">"; continue; }
+    if(m=tr.match(/^(\d+)[.)]\s+(.*)/)){ if(list!=="ol"){ closeList(); html+="<ol>"; list="ol"; } html+="<li>"+mdInline(m[2])+"</li>"; continue; }
+    if(m=tr.match(/^[-*\u2022]\s+(.*)/)){ if(list!=="ul"){ closeList(); html+="<ul>"; list="ul"; } html+="<li>"+mdInline(m[1])+"</li>"; continue; }
+    closeList(); html+="<p>"+mdInline(tr)+"</p>";
+  }
+  closeList();
+  return html||("<p>"+mdInline(String(t))+"</p>");
+}
+function openDoc(title, html, raw){
+  $("docTitle").textContent=title;
+  $("docBody").innerHTML=html;
+  S.docText=raw||"";
+  $("docWin").classList.remove("hidden");
+  $("docBody").scrollTop=0;
+}
+function closeDoc(){ const w=$("docWin"); if(w&&!w.classList.contains("hidden")) w.classList.add("hidden"); }
+$("docClose").onclick=closeDoc;
+$("docCopy").onclick=async()=>{
+  try{ await navigator.clipboard.writeText(S.docText||""); speak("Copied."); }
+  catch(e){ speak("Copy was blocked — select the text in the window and copy it manually."); }
+};
+async function tryWriter(tl,text){
+  if(/e-?mail/.test(tl)) return false;
+  let kind=null, topic=null, m;
+  if(m=tl.match(/(?:write|compose|create|draft)(?: me)? (?:a |an )?(essay|paragraph|story|poem|speech|letter|article|report|summary|haiku|rap|song)(?: about| on| over)?\s+(.+)/)){
+    kind=m[1]; topic=m[2];
+  }else if(m=tl.match(/(?:write|create|make)(?: me)? (?:a |an )?(?:step[ -]by[ -]step guide|guide)(?: to| for| on| about)?\s+(.+)/)){
+    kind="guide"; topic=m[1];
+  }else if(m=tl.match(/(?:give me|list|show me|make)(?: me)? the steps (?:to|for|on)\s+(.+)/)){
+    kind="steps"; topic=m[1];
+  }else if(m=tl.match(/^(?:plan(?:\s+out)?(?:\s+me)?|help me plan|make(?: me)? a plan(?: for| to)?)\s+(.+)/)){
+    kind="plan"; topic=m[1];
+  }else return false;
+  topic=topic.trim().replace(/[?.!]+$/,"");
+  if(topic.length<2){ speak("What should I write about?"); return true; }
+  if(!needWeb()) return true;
+  const steps=(kind==="steps"||kind==="guide");
+  const plan=(kind==="plan");
+  const label=steps?"Step-by-step guide":plan?"Plan":kind;
+  setSubtitle("Writing…");
+  let raw="";
+  try{
+    raw=await brainRaw(
+      steps?("Write a clear step-by-step guide for: "+topic+". Numbered steps, each 1-2 sentences. Plain text, no intro fluff, no conclusion.")
+           :plan?("Write a fun, practical plan for: "+topic+". Use short sections with **bold headers** and bullet points of concrete ideas. Honor every constraint in the request (for example, if they say to use only things already at home, every idea must use ordinary household stuff). No intro fluff, no conclusion.")
+           :("Write "+(/^[aeiou]/.test(kind)?"an ":"a ")+kind+" about "+topic+". About 250-350 words. Plain text with short paragraphs."),
+      steps?"You write concise numbered how-to guides. Plain text only, no markdown tables."
+           :plan?"You write fun, practical plans with bold section headers and bullet points."
+           :"You write short essays and stories. Plain text only, short paragraphs.", 25000);
+  }catch(e){ loadFail(); return true; }
+  raw=raw.trim();
+  if(raw.length<10){ loadFail(); return true; }
+  openDoc("\u270D\uFE0F "+cap1(label)+": "+cap1(topic), mdLite(raw), raw);
+  speak("Done — it's in the window on the right. It'll stay up until you say hey "+S.aiName+" again, and you can copy it with the copy button.");
+  addMsg("luna","","Wrote "+(steps?"a step-by-step guide":plan?"a plan":"a "+kind)+" about <b>"+esc(topic)+"</b> — it's in the side window.");
+  return true;
+}
+
+/* ---------------- news briefing: "what are the three biggest tech stories today?" -> side window ---------------- */
+const BRIEF_NUM={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10};
+/* tech news briefing — shared by tryBriefing and the wildcard surprise */
+async function techBriefing(n){
+  const today=new Date().toDateString();
+  // tech: pull the actual top stories from Hacker News, then brief them
+  setSubtitle("Gathering today's top tech stories…");
+  utter("On it — pulling today's top tech stories.");
+  let stories=[];
+  try{
+    const c1=new AbortController(); const t1=setTimeout(()=>c1.abort(),12000);
+    const ids=await (await fetch("https://hacker-news.firebaseio.com/v0/topstories.json",{signal:c1.signal})).json();
+    clearTimeout(t1);
+    for(const id of (ids||[]).slice(0,20)){
+      if(stories.length>=n) break;
+      try{
+        const c2=new AbortController(); const t2=setTimeout(()=>c2.abort(),6000);
+        const it=await (await fetch("https://hacker-news.firebaseio.com/v0/item/"+id+".json",{signal:c2.signal})).json();
+        clearTimeout(t2);
+        if(it&&it.title&&it.url) stories.push({title:it.title,url:it.url});
+      }catch(e){}
+    }
+  }catch(e){}
+  if(!stories.length){ loadFail(); return true; }
+  setSubtitle("Writing your briefing…");
+  const list=stories.map((s,i)=>(i+1)+'. "'+s.title+'" — '+s.url).join("\n");
+  let raw="";
+  try{
+    raw=await brainRaw(
+      "Today is "+today+". Write a news briefing titled \"Today's top "+n+" tech stories\". For each story below: a bold headline, then a short 2-3 sentence plain-English summary, then a markdown link like [Read more](URL). If you don't reliably know details beyond the headline, keep the summary short and grounded in the headline — never invent specific facts, quotes, or numbers. Numbered list. No intro paragraph, no conclusion.\n\nStories:\n"+list,
+      "You write concise news briefings. Numbered list, bold headlines, markdown links, no other markdown.", 30000);
+  }catch(e){ loadFail(); return true; }
+  raw=(raw||"").trim();
+  if(raw.length<20){ loadFail(); return true; }
+  openDoc("📰 Today's top "+n+" tech stories", mdLite(raw), raw);
+  speak("Done — your briefing is in the window on the right. It'll stay up until you say hey "+S.aiName+" again.");
+  addMsg("luna","","Put together a briefing on today's top tech stories — it's in the side window.");
+  return true;
+}
+async function tryBriefing(tl,text){
+  const m=tl.match(/^(?:what are|what're|what is|what's|give me|show me|tell me(?: about)?|brief me on|catch me up on|summarize|sum up)\b(.*)$/);
+  if(!m) return false;
+  const rest=m[1];
+  if(!/\b(stories|news|headlines|updates)\b/.test(rest)) return false;
+  const auto=/^(?:brief me on|catch me up on)\b/.test(tl);
+  if(!auto&&!/\b(biggest|top|latest|big|major|hottest|breaking|today)\b/.test(rest)
+     && !/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/.test(rest)) return false;
+  if(!needWeb()) return true;
+  let n=3;
+  const cm=rest.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/);
+  if(cm) n=Math.min(10,Math.max(1,BRIEF_NUM[cm[1]]||parseInt(cm[1],10)||3));
+  const tech=/\b(tech(?:nology)?|ai\b|artificial intelligence|gadgets?|startups?|software|silicon valley|computing|computers?|cyber)\b/.test(rest);
+  hideAnswerCard();
+  S.orbMode="thinking";
+  const today=new Date().toDateString();
+  if(tech) return await techBriefing(n);
+  // any other topic: research it, then brief it in the side window
+  const topic=rest.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2})\b/g," ")
+    .replace(/\b(biggest|top|latest|big|major|hottest|breaking|today|daily)\b/g," ")
+    .replace(/\b(stories|news|headlines|updates)\b/g," ").replace(/\s+/g," ").trim()
+    .replace(/^(?:the|a|an|on|in|about|for|of)\s+/,"")||"top stories";
+  setSubtitle("Researching the latest…");
+  utter("On it — researching that now.");
+  const parts=await webResearch(topic+" latest news");
+  if(!parts.length){ loadFail(); return true; }
+  setSubtitle("Writing your briefing…");
+  const ctx=parts.join("\n\n").slice(0,4500);
+  let raw="";
+  try{
+    raw=await brainRaw(
+      "Today is "+today+". The user asked for the top "+n+" "+topic+" stories, each with a short summary. Here is what I found online:\n\n"+ctx+"\n\nWrite a news briefing titled \"Top "+n+" "+topic+" stories\". Bold headline per story, 2-3 sentence summary, numbered list. If details are thin, keep summaries short and don't invent facts. No intro, no conclusion.",
+      "You write concise news briefings. Numbered list, bold headlines, no other markdown.", 30000);
+  }catch(e){ loadFail(); return true; }
+  raw=(raw||"").trim();
+  if(raw.length<20){ loadFail(); return true; }
+  openDoc("📰 Top "+n+" "+cap1(topic)+" stories", mdLite(raw), raw);
+  speak("Done — your briefing is in the window on the right.");
+  addMsg("luna","","Put together a briefing on "+esc(topic)+" — it's in the side window.");
+  return true;
+}
+
+/* ---------------- teach me: pick a topic (or take theirs), research it, teach it ---------------- */
+const TEACH_IDEAS=[
+  "why the sky looks blue",
+  "how GPS satellites know where you are",
+  "the science behind deja vu",
+  "why we dream and what dreams do for the brain",
+  "the Monty Hall problem and why switching wins",
+  "how mRNA vaccines teach your cells",
+  "how octopuses think with eight arms",
+  "the Fermi paradox — where is everybody",
+  "why time feels faster as you get older",
+  "how chess openings got their names",
+  "what happens inside a black hole",
+  "how noise-cancelling headphones erase sound"
+];
+function nextTeachIdea(){
+  let n=0; try{ n=parseInt(localStorage.getItem("luna_teach_n")||"0",10)||0; }catch(e){}
+  try{ localStorage.setItem("luna_teach_n",String(n+1)); }catch(e){}
+  return TEACH_IDEAS[n%TEACH_IDEAS.length];
+}
+// research a topic and teach it as a mini-lesson in the side window
+async function teachTopic(topic,minutes){
+  minutes=Math.min(60,Math.max(2,minutes||10));
+  if(!needWeb()) return false;
+  setSubtitle("Learning about "+topic+" so I can teach you…");
+  utter("Love that. Give me a moment to dig into "+topic+", then I'll teach you.");
+  const parts=await webResearch(topic);
+  if(!parts.length){ loadFail(); return false; }
+  setSubtitle("Putting your lesson together…");
+  const ctx=parts.join("\n\n").slice(0,5000);
+  const words=Math.round(minutes*130);
+  let raw="";
+  try{
+    raw=await brainRaw(
+      "Teach the user about \""+topic+"\" in a mini-lesson that takes about "+minutes+" minutes to read (roughly "+words+" words). Here is background research:\n\n"+ctx+
+      "\n\nWrite an engaging lesson in your own words: start with a hook, then short sections with **bold headers**, concrete examples, and one fun fact. Write it like a great teacher talking, not a textbook. Do not say you looked anything up and do not name any sources.",
+      "You are "+S.aiName+", a warm, brilliant teacher. Write engaging mini-lessons with bold section headers.", 30000);
+  }catch(e){ loadFail(); return false; }
+  raw=(raw||"").trim();
+  if(raw.length<20){ loadFail(); return false; }
+  openDoc("🎓 "+cap1(topic), mdLite(raw), raw);
+  speak("Done — your lesson on "+topic+" is in the window on the right. The short version: "+firstSentences(raw,2));
+  addMsg("luna","","Taught you about <b>"+esc(topic)+"</b> — the lesson is in the side window.");
+  return true;
+}
+async function tryTeach(tl,text){
+  let topic=null, minutes=10, m;
+  if(m=tl.match(/find something interesting (?:i can |to )?learn\b(.*)$/)){
+    let rest=(m[1]||"").trim();
+    const mm=rest.match(/in (\d+)\s*minutes?/);
+    if(mm){ minutes=Math.min(60,Math.max(2,parseInt(mm[1],10))); rest=rest.replace(/,?\s*in \d+\s*minutes?/,"").trim(); }
+    rest=rest.replace(/,?\s*research it,?\s+and teach it to me\s*$/,"").replace(/,?\s*teach it to me\s*$/,"").trim();
+    topic=rest.replace(/^(?:about|on)\b[,\s]*/,"").replace(/[,.\s]+$/,"");
+  }else if(m=tl.match(/^(?:teach me|tell me something interesting|i want to learn|learn)(?: about)?\s+(.+?)(?: in (\d+)\s*minutes?)?\s*$/)){
+    topic=m[1].trim(); if(m[2]) minutes=parseInt(m[2],10);
+  }else if(/^(?:teach me|tell me something interesting)\s*$/.test(tl)){
+    topic="";
+  }else return false;
+  topic=topic.replace(/[?.!]+$/,"").replace(/^(?:me|us)\s+/,"");
+  if(!topic) topic=nextTeachIdea(); // no topic: surprise them with something fascinating
+  return await teachTopic(topic,minutes);
+}
+
+/* ---------------- wildcard: "surprise me" — pick something she can actually do, and do it ---------------- */
+async function tryWildcard(tl,text){
+  if(!/(surprise me|give me (a |something |)(surprise|task|challenge)|do something (that will |that'll |to )?surprise me|wildcard|impress me)/.test(tl)) return false;
+  if(!needWeb()) return true;
+  let n=0; try{ n=parseInt(localStorage.getItem("luna_wildcard_n")||"0",10)||0; }catch(e){}
+  const pick=n%4;
+  try{ localStorage.setItem("luna_wildcard_n",String(n+1)); }catch(e){}
+  if(pick===0){
+    // surprise 1: draw something delightfully weird (fast engine, instant payoff)
+    speak("Okay — surprise incoming. Drawing you something weird.");
+    pollinationsImage("a cat astronaut in a glass bubble helmet sipping bubble tea on the moon, Earth rising in the starry sky, vibrant digital art");
+    return true;
+  }
+  if(pick===1){
+    // surprise 2: a tiny poem about them, written just now, in the side window
+    setSubtitle("Writing you something…");
+    try{
+      const raw=await brainRaw(
+        "Write a short, funny, warm 8-line poem about "+(S.name?S.name:"my favorite human")+" and their day. Playful, never cheesy. Plain text, no title.",
+        "You are "+S.aiName+", a playful poet.", 15000);
+      const poem=(raw||"").trim();
+      if(poem.length<10) throw 0;
+      openDoc("✨ A surprise poem", mdLite(poem), poem);
+      speak("Done — there's a little poem waiting in the window on the right. Written just now, just for you.");
+      addMsg("luna","","Wrote you a surprise poem — it's in the side window.");
+    }catch(e){ loadFail(); }
+    return true;
+  }
+  if(pick===2){
+    // surprise 3: a same-day tech briefing — the thing she does best
+    speak("Surprise: a fresh tech briefing, hot off the press.");
+    return await techBriefing(3);
+  }
+  // surprise 4: teach them something fascinating, unprompted
+  return await teachTopic(nextTeachIdea(),5);
+}
+
+/* ---------------- email composer: To -> attached "about" box -> draft -> send ---------------- */
+function closeMail(){ $("mailWin").classList.add("hidden"); $("aboutWin").classList.add("hidden"); }
+function cleanSpokenEmail(t){
+  const s=" "+t.toLowerCase().trim()+" ";
+  return s.replace(/\s+at\s+/g,"@").replace(/\s+dot\s+/g,".").replace(/[^a-z0-9@._%+-]/g,"");
+}
+function placeAbout(){
+  // keep the little "about" rectangle physically attached under the email window
+  const r=$("mailWin").getBoundingClientRect(), a=$("aboutWin");
+  a.style.width=Math.max(220,Math.min(400,r.width-28))+"px";
+  a.style.left=(r.left+14)+"px";
+  a.style.top=(r.bottom-3)+"px";
+}
+function mailStep(step){
+  const M=S.mail; if(!M) return;
+  M.awaiting=(step==="review")?null:step;
+  $("mailSubjectRow").classList.toggle("hidden",step!=="review");
+  $("mailMsgRow").classList.toggle("hidden",step!=="review");
+  $("mailNext").classList.toggle("hidden",step!=="to");
+  $("mailSend").classList.toggle("hidden",step!=="review");
+  const about=$("aboutWin");
+  if(step==="about"){
+    about.classList.remove("hidden");
+    requestAnimationFrame(placeAbout);
+    setTimeout(()=>{ placeAbout(); try{$("mailAbout").focus();}catch(e){} },60);
+  }else{
+    about.classList.add("hidden");
+  }
+  $("mailHint").classList.remove("err");
+  $("mailHint").textContent=
+    step==="to"?"Who should I email? Type the address above, or just say it.":
+    step==="about"?"Now tell me what it's about in the little box attached below — then hit \u2713.":
+    "I'm listening — tell me edits, say \"send it\", \"scrap it\", or \"hey Luna\" to start over.";
+  $("mailWin").classList.remove("hidden");
+}
+// tolerant parser for the brain's SUBJECT:/BODY: replies — models love to add
+// markdown bold, lowercase labels, or a chatty preamble, which used to make
+// drafting silently fall back to echoing the raw "about" text
+function parseMailDraft(raw){
+  if(!raw) return {subject:"",body:""};
+  let t=String(raw).replace(/\r/g,"").replace(/\*\*/g,"").replace(/`/g,"").trim();
+  const sm=t.match(/^subject\s*:\s*(.+)$/mi);
+  let subject=sm?sm[1].trim():"", body="";
+  const bi=t.search(/^body\s*:/mi);
+  if(bi>=0){
+    body=t.slice(bi).replace(/^body\s*:\s*/i,"").trim();
+    const cut=body.search(/^\s*subject\s*:/mi); // model put SUBJECT: last
+    if(cut>=0) body=body.slice(0,cut).trim();
+  }
+  if(!subject&&!body){
+    // model ignored the format entirely: first line -> subject, rest -> body
+    const lines=t.split("\n").map(l=>l.trim()).filter(Boolean);
+    if(lines.length){
+      subject=lines[0].replace(/^subject\s*:\s*/i,"").slice(0,90);
+      body=lines.slice(1).join("\n");
+    }
+  }
+  return {subject,body};
+}
+async function draftMail(toneNote){
+  const M=S.mail; if(!M) return;
+  genStart();
+  try{
+  mailStep("review");
+  $("mailSubject").value=""; $("mailMsg").value="Drafting…";
+  setSubtitle("Drafting your email…");
+  let subject="", body="";
+  if(S.webAccess){
+    for(let a=0;a<2&&!subject;a++){
+      try{
+        const raw=await brainRaw(
+          "Write an email"+(S.name?(" from "+S.name):"")+" to "+M.to+". What it's about: "+M.about+"."+(toneNote?(" Tone: "+toneNote+"."):"")+
+          " Reply with exactly these two lines and nothing else — no extra text, no markdown:\nSUBJECT: <short subject line>\nBODY: <the email, 3-6 sentences, warm and natural>",
+          "You write short emails. Reply with ONLY a SUBJECT: line and a BODY: line, plain text, no markdown.", 20000);
+        const p=parseMailDraft(raw);
+        subject=p.subject; body=p.body;
+      }catch(e){}
+    }
+  }
+  if(!subject) subject=M.about.length>60?M.about.slice(0,57)+"\u2026":M.about;
+  if(!body) body="Hi,\n\n"+cap1(M.about)+".\n\n"+(S.name?("\u2014 "+S.name):"");
+  $("mailSubject").value=cap1(subject); $("mailMsg").value=body;
+  setSubtitle("Email draft ready.");
+  speak("Done — the email's written in the window. I'm listening: tell me any edits, say \"send it\" when it's ready, \"scrap it\" to drop it — or \"hey Luna\" to start fresh.");
+  addMsg("luna","","Drafted an email to <b>"+esc(M.to)+"</b> — subject: <b>"+esc(subject)+"</b>. It's in the email window for review.");
+  }finally{ genEnd(); }
+}
+function doMailSend(){
+  const M=S.mail;
+  const to=(($("mailTo").value||"")||(M&&M.to)||"").trim();
+  const su=$("mailSubject").value.trim(), body=$("mailMsg").value;
+  if(!/^\S+@\S+\.\S+$/.test(to)){ speak("I need a valid email address in the To field first."); return; }
+  closeMail(); S.mail=null;
+  openUrl("https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(to)+"&su="+encodeURIComponent(su)+"&body="+encodeURIComponent(body),
+    "Email to "+to, "Opening Gmail with your email addressed and written — hit send when it looks right.");
+}
+// "hey luna" (or "luna, ..." at the start) while the composer is open:
+// forget the email; anything after it becomes a normal command
+const EMAIL_EXIT_RE=/^\s*(?:hey\s+)?(?:lu+na|lo+na|louna|lunar|luner|solar)\b/i;
+function exitMail(text){
+  const em=text.match(EMAIL_EXIT_RE);
+  if(!em) return false;
+  const rest=text.slice(em.index+em[0].length).trim().replace(/^[.,!?…\s]+/,"");
+  closeMail(); S.mail=null; S.buffer=""; cmdBuf="";
+  if(rest){ handleCommand(rest); }
+  else{
+    // scrap the draft, ding, and listen — no voice reply
+    addMsg("luna","Email scrapped.");
+    chime(); pokeDock();
+    S.awaiting=true;
+    setTimeout(()=>{ if(S.awaiting){ S.awaiting=false; S.orbMode="idle"; S.buffer=""; } },9000);
+    S.ignoreUntil=Date.now()+1400;
+  }
+  return true;
+}
+// sticky email context: while the composer is open, every utterance is about
+// the email — edits, "send it", "scrap it". Only the exit hatch breaks out.
+async function emailContext(text){
+  if(exitMail(text)) return;
+  const tl=text.toLowerCase().trim();
+  if(/^(cancel|discard|never ?mind|forget it|nevermind|drop it|scrap( it)?)/.test(tl)){ closeMail(); S.mail=null; speak("Email scrapped."); return; }
+  if(/\bsend( it| this| the email)?\b/.test(tl)&&!/unsend/.test(tl)){ doMailSend(); return; }
+  const tm=tl.match(/make it (shorter|longer|funnier|more formal|more friendly|friendlier|more professional|more casual|more polite)/);
+  if(tm){ setSubtitle("Rewriting…"); await draftMail("make it "+tm[1]); return; }
+  const instr=text.trim();
+  if(instr.length<2){ speak("What should I change?"); return; }
+  await applyMailEdit(instr);
+}
+async function applyMailEdit(instruction){
+  const M=S.mail; if(!M) return;
+  genStart();
+  try{
+  const curSub=$("mailSubject").value, curBody=$("mailMsg").value;
+  setSubtitle("Editing…");
+  let subject=curSub, body=curBody, changed=false;
+  if(S.webAccess){
+    let raw="";
+    for(let a=0;a<2&&!raw;a++){
+      try{
+        raw=await brainRaw(
+          "Here is a draft email:\nSUBJECT: "+curSub+"\nBODY: "+curBody+"\n\nThe user wants this change: \""+instruction+"\". Apply ONLY that change, keeping everything else the same. Reply with exactly these two lines and nothing else — no extra text, no markdown:\nSUBJECT: <updated subject>\nBODY: <updated body>",
+          "You edit email drafts. Reply with ONLY a SUBJECT: line and a BODY: line, plain text, no markdown.", 20000);
+      }catch(e){ raw=""; }
+    }
+    const p=parseMailDraft(raw);
+    if(p.subject){ subject=p.subject; changed=true; }
+    if(p.body){ body=p.body; changed=true; }
+  }
+  $("mailSubject").value=subject; $("mailMsg").value=body;
+  setSubtitle("Email draft ready.");
+  if(changed){
+    speak("Updated — take a look. Anything else, or should I send it?");
+    addMsg("luna","","Edited the draft ("+esc(instruction)+"). It's updated in the email window.");
+  }else{
+    loadFail();
+  }
+  }finally{ genEnd(); }
+}
+async function answerMailSlot(text){
+  if(exitMail(text)) return;
+  const M=S.mail; if(!M) return;
+  const tl=text.toLowerCase().trim();
+  if(/^(cancel|never ?mind|stop|forget it|nevermind|drop it|discard)/.test(tl)){ closeMail(); S.mail=null; speak("Email discarded."); return; }
+  if(M.awaiting==="to"){
+    const em=cleanSpokenEmail(text);
+    if(!/^\S+@\S+\.\S+$/.test(em)){ speak("That doesn't look like an email address — type it in the window, or say it like 'bob at gmail dot com'. Or say cancel."); return; }
+    M.to=em; $("mailTo").value=em;
+    mailStep("about");
+    speak("Got it — emailing "+em+". What's it about? Type it in the little box under the window, then hit the check.");
+    return;
+  }
+  if(M.awaiting==="about"){
+    const about=text.trim().replace(/[?.!]+$/,"");
+    if(about.length<2){ speak("What should the email say?"); return; }
+    M.about=about; $("mailAbout").value=about;
+    await draftMail();
+    return;
+  }
+}
+async function tryMailComposer(tl,text){
+  const isNew=/(?:send|write|compose|draft)(?: me)? an? email\b/.test(tl);
+  if(!isNew) return false;
+  // fresh composer (replaces any existing draft)
+  closeMail();
+  let to=null, about=null;
+  const tem=text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+  if(tem) to=tem[0];
+  const am=tl.match(/an? email to \S+ about (.+)/)||tl.match(/an? email about (.+)/);
+  if(am) about=am[1].trim().replace(/[?.!]+$/,"");
+  if(!about){
+    // "draft an email thanking someone for helping me" — no recipient, but the
+    // subject matter is right there: treat the rest as the about-text
+    const rest=tl.replace(/^(?:please\s+)?(?:send|write|compose|draft)(?: me)? an? email\s*/,"").trim().replace(/[?.!]+$/,"");
+    if(rest.length>3&&!/^to\s+/.test(rest)) about=rest;
+  }
+  S.mail={open:true, awaiting:null, to:to||"", about:about||""};
+  $("mailTo").value=to||""; $("mailAbout").value=""; $("mailSubject").value=""; $("mailMsg").value="";
+  if(to&&about){
+    await draftMail();
+  }else if(to){
+    mailStep("about");
+    speak("Got it — emailing "+to+". What's it about? Type it in the little box under the window, then hit the check.");
+  }else{
+    mailStep("to");
+    if(about){
+      // prefill the about box so it's already there when they reach that step
+      $("mailAbout").value=about; S.mail.about=about;
+      speak("Who should I send it to? I've already noted it's about "+about+".");
+    }else{
+      speak("Who should I email? Type the address in the window, or just say it.");
+    }
+  }
+  return true;
+}
+$("mailClose").onclick=()=>{ closeMail(); S.mail=null; speak("Email closed — draft discarded."); };
+$("mailNext").onclick=()=>{
+  if(!S.mail) return;
+  const v=$("mailTo").value.trim();
+  if(!/^\S+@\S+\.\S+$/.test(v)){
+    const h=$("mailHint");
+    h.textContent="That doesn't look like an email address — it should look like name@example.com.";
+    h.classList.add("err");
+    speak("That doesn't look like an email address. It should look like name at example dot com.");
+    return;
+  }
+  S.mail.to=v;
+  mailStep("about");
+  speak("Got it. Now what's the email about? Type it in the little box under the window, then hit the check.");
+};
+$("aboutGo").onclick=async()=>{
+  if(!S.mail) return;
+  const v=$("mailAbout").value.trim();
+  if(v.length<2){
+    speak("Tell me what the email's about first — a sentence or two in the box.");
+    try{$("mailAbout").focus();}catch(e){}
+    return;
+  }
+  S.mail.about=v.replace(/[?.!]+$/,"");
+  await draftMail();
+};
+$("mailSend").onclick=doMailSend;
+$("mailTo").addEventListener("keydown",e=>{ if(e.key==="Enter") $("mailNext").click(); });
+$("mailAbout").addEventListener("keydown",e=>{ if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)) $("aboutGo").click(); });
+window.addEventListener("resize",()=>{ if(!$("aboutWin").classList.contains("hidden")) placeAbout(); });
+
+/* ---------------- settings rows ---------------- */
+$("permMic").onclick=toggleMic;
+$("permWeb").onclick=()=>{
+  S.webAccess=!S.webAccess; store.set("webAccess",S.webAccess);
+  $("permWebVal").textContent=S.webAccess?"On":"Off";
+  speak("Web access "+(S.webAccess?"on.":"off. Wikipedia, weather, and web search are paused."));
+};
+$("permSys").onclick=()=>speak("System control is set to ask first. I'll always check with you before changing anything.");
+$("genVoice").onclick=()=>{
+  S.voicePref=S.voicePref==="female"?"male":"female";
+  store.set("voicePref",S.voicePref);
+  $("voiceVal").textContent=S.voicePref==="female"?"Female":"Male";
+  speak("Voice set to "+S.voicePref+".");
+};
+$("genTestVoice").onclick=()=>{
+  if(S.muted){ S.muted=false; store.set("muted",false); updateMuteBtn(); }
+  speak("Hi, I'm "+S.aiName+". If you can hear me, your voice is working.");
+};
+$("genImgEngine").onclick=()=>{ setImgEngine(S.imgEngine==="horde"?"pollinations":"horde"); };
+$("genTestPopups").onclick=()=>{
+  // demo: opens the same centered window a YouTube video would play in, but blank and small
+  openMini("▶ Popup test",
+    '<div style="width:100%; aspect-ratio:16/9; border-radius:8px; background:#05080f; border:1px dashed var(--line); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:14px; text-align:center; padding:20px;">A YouTube video would play here.<br>This window works — popups are not blocked.</div>',
+    true);
+  speak("This is where a YouTube video would play. The window works, so popups are not blocked.");
+};
+$("themeRow").onclick=()=>setTheme(S.theme!=="light");
+function setTheme(light){
+  S.theme=light?"light":"dark"; store.set("theme",S.theme);
+  document.body.classList.toggle("light",light);
+  $("themeVal").textContent=light?"Light":"Dark";
+  S.aiName=light?"Solar":"LUNA"; store.set("aiName",S.aiName);
+  $("settingsName").textContent=S.aiName;
+  setSubtitle('Press the mic, then say "Hey '+S.aiName+'".');
+  speak(light?"Light mode on. I'm Solar now.":"Dark mode on. I'm LUNA again.");
+}
+// memories + notes inputs
+function wireAdd(inputId,btnId,fn){
+  const inp=$(inputId);
+  const go=()=>{ fn(inp.value); inp.value=""; };
+  $(btnId).onclick=go;
+  inp.addEventListener("keydown",e=>{ if(e.key==="Enter") go(); });
+}
+wireAdd("memIn","memAdd",v=>{ if(v.trim()){ addMemory(v); speak("I'll remember that."); } });
+
+/* ---------------- dock controls ---------------- */
+btnMic.onclick=toggleMic;
+btnMute.onclick=()=>{ S.muted=!S.muted; store.set("muted",S.muted); updateMuteBtn(); if(!S.muted) speak("Voice on."); else { addMsg("luna","Voice muted."); setSubtitle("Voice muted."); } };
+btnRepeat.onclick=()=>{ if(S.lastSpoken) speak(S.lastSpoken); };
+function submitText(){ const v=textIn.value.trim(); if(!v) return; textIn.value=""; handleCommand(v); }
+btnAsk.onclick=submitText;
+textIn.addEventListener("keydown",e=>{ if(e.key==="Enter") submitText(); });
+
+/* ---------------- boot ---------------- */
+function refreshSettingsLabels(){
+  $("voiceVal").textContent=S.voicePref==="female"?"Female":"Male";
+  $("settingsName").textContent=S.aiName;
+  $("themeVal").textContent=S.theme==="light"?"Light":"Dark";
+  $("permWebVal").textContent=S.webAccess?"On":"Off";
+  $("permMicVal").textContent=S.listening?"On":"Off";
+  renderImgEngine();
+}
+/* ---------------- boot ---------------- */
+// name follows the theme: light = Solar, dark = LUNA
+S.aiName=S.theme==="light"?"Solar":"LUNA"; store.set("aiName",S.aiName);
+document.body.classList.toggle("light",S.theme==="light");
+updateMuteBtn();
+// one-time migration: anything saved as a note becomes a memory
+try{
+  const oldNotes=store.get("notes",[]);
+  if(oldNotes&&oldNotes.length){
+    oldNotes.forEach(n=>{ if(S.memories.indexOf(n)<0) S.memories.push(n); });
+    store.set("memories",S.memories); store.set("notes",[]);
+  }
+}catch(e){}
+renderMemories();
+renderTimers();
+refreshSettingsLabels();
+dbOpen(); // image gallery storage
+setSubtitle('Press the mic, then say "Hey '+S.aiName+'".');
+pokeDock(); // dock fades away a few seconds after load until needed
+if(S.name) addMsg("luna","Welcome back, "+esc(S.name)+'. Press the mic button, then say "Hey '+esc(S.aiName)+'".');
+else addMsg("luna","",'Hi, I\'m <b>'+esc(S.aiName)+'</b>. Press the <b>mic button</b>, then say <b>"Hey '+esc(S.aiName)+'"</b> — or just type in the bar under my icon. Open <b>☰</b> for settings, memories, and notes.');
+</script>
+</body>
+</html>
