@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LUNA</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2304060c'/%3E%3Ccircle cx='32' cy='32' r='15' fill='none' stroke='%233fa9ff' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%236ee7ff'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#04060c">
 <style>
   :root{
     --bg:#04060c; --panel:rgba(10,15,28,.92); --line:#1c2a44;
@@ -492,7 +494,7 @@ $("panelScrim").onclick=()=>toggleSettings(false);
 document.addEventListener("keydown",e=>{
   if(e.key==="Escape"){ toggleSettings(false); closeMini(); hideAnswerCard(); closeDoc(); }
 });
-if(window.innerWidth>900) document.body.classList.add("panel-open");
+// settings panel starts closed; the user opens it with the ☰ button
 
 // ---------- transcript ----------
 btnTranscript.onclick=()=>$("transcript").classList.toggle("hidden");
@@ -913,8 +915,17 @@ function queueCommand(t){ cmdBuf=(cmdBuf+" "+t).trim(); pokeCmdTimer(); }
 <script>
 "use strict";
 /* ---------------- command router ---------------- */
+// strip pet names / filler people tack onto commands ("dear", "doll", "be a doll and ...")
+// so the router sees the actual task
+function stripFiller(t){
+  let s=t;
+  s=s.replace(/^(?:be a (?:good )?(?:doll|dear|sweetie|sweetheart|honey|darling|angel|dearie)\s+and\s+|(?:doll|dear|sweetie|sweetheart|honey|darling|dearie)[,]\s*|(?:please[,.]?|(?:could|would|can|will) you)\s+)+/i,"");
+  let prev;
+  do{ prev=s; s=s.replace(/[,.]?\s+(?:for me(?: please)?|please|my (?:doll|dear|sweetie|sweetheart|honey|darling|dearie)|(?:doll|dear|sweetie|sweetheart|honey|darling|dearie))$/i,""); }while(s!==prev);
+  return s.trim();
+}
 function handleCommand(raw){
-  const text=raw.trim().replace(/\s+/g," ");
+  const text=stripFiller(raw.trim().replace(/\s+/g," "));
   if(!text) return;
   addMsg("you",text);
   S.orbMode="thinking";
