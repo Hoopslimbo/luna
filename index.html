@@ -464,7 +464,7 @@ const S = {
   theme: store.get("theme","dark"),
   memories: store.get("memories", []),
   loc: store.get("loc", null),
-  timers: [], lastSpoken:"", orbMode:"idle", wakeLock:null, pulse:0,
+  timers: [], lastSpoken:"", hist:[], orbMode:"idle", wakeLock:null, pulse:0,
   gen:0, genCancel:false // gen>0 while she's generating; mic ignores everything but "luna" then
 };
 
@@ -552,7 +552,7 @@ function draw(){
   const fl = speaking ? (0.5+0.5*Math.sin(ringT*21))*(0.5+0.5*Math.sin(ringT*9.7)) : 0;
   const A = Math.min(1, amp + S.pulse*0.9 + fl*0.38);
 
-  const w=ring._s, cx=w/2, cy=w/2, R=w*0.36;
+  const w=ring._s, cx=w/2, cy=w/2, R=Math.min(w*0.36,w*0.5-36);
   rctx.clearRect(0,0,w,w);
 
   // theme colors: Solar (light) burns warm, LUNA (dark) glows cool
@@ -564,17 +564,26 @@ function draw(){
   // faint dotted orbit
   rctx.save();
   rctx.strokeStyle=solar?"rgba(255,170,80,0.25)":"rgba(120,140,255,0.16)"; rctx.setLineDash([2,7]); rctx.lineWidth=1.5;
-  rctx.beginPath(); rctx.arc(cx,cy,R+34+Math.sin(ringT*0.8)*6,0,Math.PI*2); rctx.stroke();
+  rctx.beginPath(); rctx.arc(cx,cy,Math.min(R+34+Math.sin(ringT*0.8)*6,w*0.47),0,Math.PI*2); rctx.stroke();
   rctx.restore();
 
-  const rr=R+A*26;
+  const rr=Math.min(R+A*26,w*0.5-10);
   const grad=rctx.createLinearGradient(cx-rr,cy-rr,cx+rr,cy+rr);
   grad.addColorStop(0,c1); grad.addColorStop(1,c2);
 
-  // outer glow ring — reactive
+  // outer glow ring — reactive (halo is a bounded radial gradient that fades
+  // fully inside the square canvas, so the glow never clips at its edges)
+  const haloR=Math.min(rr+80,w*0.48);
+  const haloG=rctx.createRadialGradient(cx,cy,Math.max(0,rr-14),cx,cy,haloR);
+  haloG.addColorStop(0,"rgba("+shOuter+","+(0.30+A*0.45).toFixed(3)+")");
+  haloG.addColorStop(1,"rgba("+shOuter+",0)");
+  rctx.save();
+  rctx.fillStyle=haloG;
+  rctx.beginPath(); rctx.arc(cx,cy,haloR,0,Math.PI*2); rctx.fill();
+  rctx.restore();
   rctx.save();
   rctx.shadowColor="rgba("+shOuter+","+(0.35+A*0.55).toFixed(3)+")";
-  rctx.shadowBlur=18+A*70;
+  rctx.shadowBlur=Math.min(18+A*70,Math.max(0,w*0.5-rr-6));
   rctx.strokeStyle=grad; rctx.lineWidth=3+A*5;
   rctx.beginPath(); rctx.arc(cx,cy,rr,0,Math.PI*2); rctx.stroke();
   rctx.restore();
@@ -759,8 +768,15 @@ function utter(text,onDone,onStart){
 }
 // she shows the words exactly when she starts saying them — never before.
 // opts: {onDone, chat:false} — chat:false shows only the subtitle (no transcript line)
+// ---- conversation memory: what was just said (this session) ----
+function pushHist(w,t){ t=String(t||"").replace(/\s+/g," ").trim().slice(0,150); if(!t) return; S.hist=S.hist||[]; S.hist.push({w:w,t:t}); while(S.hist.length>6) S.hist.shift(); }
+function histPrompt(){
+  if(!S.hist||!S.hist.length) return "";
+  return "Recent conversation (you are "+S.aiName+"):\n"+S.hist.map(h=>((h.w==="ai"?S.aiName:(S.name||"User"))+": "+h.t)).join("\n")+"\n\n";
+}
 function speak(text,opts){
   text=String(text||""); if(!text.trim()) return;
+  pushHist("ai",text);
   opts=opts||{};
   let shown=false;
   function show(){
@@ -792,7 +808,7 @@ document.addEventListener("visibilitychange",()=>{
 // ---------- speech recognition ----------
 const WAKE_RE=/\b(?:hey\s+)?(?:lu+na|lo+na|louna|lunar|luner|solar)\b/i;
 // heard while she's mid-sentence → stop talking immediately ("hey luna", "stop", "shhh")
-const INTERRUPT_RE=/\bhey\s+(?:lu+na|lo+na|louna|lunar|luner|solar)\b|\b(?:lu+na|lo+na|louna|lunar|luner|solar)\s+stop\b|\bstop\b|\bstop talking\b|\bsh+u*t+\s*up\b|\bquiet\b/i;
+const INTERRUPT_RE=/\b(?:hey\s+)?(?:lu+na|lo+na|louna|lunar|luner|solar)\b|\b(?:lu+na|lo+na|louna|lunar|luner|solar)\s+stop\b|\bstop\b|\bstop talking\b|\bsh+u*t+\s*up\b|\bquiet\b/i;
 function startListening(){
   const R=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!R){ setStatus(false,"NO SPEECH SUPPORT"); speak("Speech recognition isn't supported in this browser."); return; }
@@ -817,6 +833,7 @@ function startListening(){
       // a stop word ("stop", "luna stop", "shut up") always means silence —
       // even when her name is in there too
       if(!/\bstop\b|\bsh+u*t+\s*up\b|\bquiet\b/i.test(heard)&&WAKE_RE.test(heard)){
+        S.hist=[]; // fresh "hey <name>": new topic, forget the last one
         // "hey luna" while she's talking: stop cold, then just ding and listen — no voice reply
         const hadMail=!!(S.mail&&S.mail.open);
         if(hadMail){ closeMail(); S.mail=null; addMsg("luna","Email scrapped."); }
@@ -922,6 +939,7 @@ function routeHeard(finals,interim){
   if(m) cancelGen(); // her name breaks through: tell any long job to stop quietly
   const emailHot=!!(S.mail&&S.mail.open);
   const inFollowUp=Date.now()<S.followUpUntil||(emailHot&&!speechSynthesis.speaking);
+  if(m&&!inFollowUp) S.hist=[]; // "hey <name>" out of the blue: new topic, forget the last one
   if(!m&&!inFollowUp){
     // she just acted but you're still talking: don't drop the rest — hear it as a new command
     if(Date.now()<(S.recentCmdUntil||0)&&text.replace(/[.,!?…\s]/g,"").length>1){ queueCommand(text); return; }
@@ -1017,6 +1035,7 @@ function handleCommand(raw){
       if(await trySystem(tl,text)) return done();
       if(await tryNotes(tl,text)) return done();
       if(await tryMemory(tl,text)) return done();
+      if(await tryJokes(tl,text)) return done();
       if(await tryPersonality(tl,text)) return done();
       if(await tryFiles(tl,text)) return done();
       if(await tryMailComposer(tl,text)) return done();
@@ -1036,6 +1055,7 @@ function handleCommand(raw){
       if(await runGen(()=>tryWildcard(tl,text))) return done();
       if(await trySlang(tl,text)) return done();
       // Wikipedia gets first crack at who/what questions — before any web search
+      if(await runGen(()=>tryDictionary(tl,text))) return done();
       if(await runGen(()=>tryWiki(tl,text))) return done();
       if(await tryWeb(tl,text)) return done();
       await tryBrain(tl,text);
@@ -1049,6 +1069,43 @@ function needWeb(){
 }
 
 /* ---------------- system ---------------- */
+/* ---------------- live jokes: quick internet search, spoken directly (no window) ---------------- */
+const JOKE_FALLBACK="My joke book seems to be stuck shut at the moment. Ask me again in a second and I will have one ready.";
+const JOKE_ALIAS={british:"england",uk:"england",english:"england",american:"america"};
+function jokeTopic(tl){
+  let m=tl.match(/\bjokes?\b\s+about\s+([a-z]+(?:\s+[a-z]+)?)/)
+       ||tl.match(/(?:tell|give|say|got|know|hear|want|need)\s+(?:me\s+)?(?:a|an|another|some|any)?\s*([a-z]+(?:\s+[a-z]+)?)\s*jokes?\b/)
+       ||tl.match(/^\s*([a-z]+(?:\s+[a-z]+)?)\s+jokes?\b/);
+  let t=m?m[1].trim():"";
+  if(/^(a|an|the|some|any|another|funny|good|great|best|new|clean|nice|silly)$/.test(t)) t="";
+  return JOKE_ALIAS[t]||t;
+}
+async function fetchJoke(topic){
+  let url="https://v2.jokeapi.dev/joke/Any?blacklistFlags=nsfw,religious,political,racist,sexist,explicit";
+  if(topic) url+="&contains="+encodeURIComponent(topic);
+  const r=await fetch(url);
+  if(!r.ok) return null;
+  const j=await r.json();
+  if(j.error) return null;
+  if(j.type==="single"&&j.joke) return j.joke;
+  if(j.type==="twopart"&&j.setup&&j.delivery) return j.setup+" "+j.delivery;
+  return null;
+}
+async function tryJokes(tl,text){
+  if(!/(\bjokes?\b|make me laugh|something funny)/.test(tl)) return false;
+  if(!needWeb()) return true;
+  pushHist("user",text);
+  let joke=null;
+  try{
+    const topic=jokeTopic(tl);
+    joke=await fetchJoke(topic);
+    if(!joke&&topic) joke=await fetchJoke("");
+  }catch(e){}
+  if(!joke) joke=JOKE_FALLBACK;
+  speak(joke);
+  return true;
+}
+
 const JOKES=[
  "Why do programmers prefer dark mode? Because light attracts bugs.",
  "I told my computer I needed a break, and now it won't stop sending me KitKat ads.",
@@ -1264,9 +1321,19 @@ async function fetchWeather(lat,lon,name){
   const j=await r.json();
   const c=j.current, d=j.daily;
   const cond=WMO[c.weather_code]||"changing conditions";
-  return "In "+name+" it's "+Math.round(c.temperature_2m)+"°F and "+cond+", humidity "+c.relative_humidity_2m+"%, wind "+Math.round(c.wind_speed_10m)+" mph. "+
-    "Today's high "+Math.round(d.temperature_2m_max[0])+", low "+Math.round(d.temperature_2m_min[0])+
-    ", rain chance "+(d.precipitation_probability_max[0]??0)+"%. Tomorrow: high "+Math.round(d.temperature_2m_max[1])+", low "+Math.round(d.temperature_2m_min[1])+".";
+  const temp=Math.round(c.temperature_2m), high=Math.round(d.temperature_2m_max[0]), low=Math.round(d.temperature_2m_min[0]);
+  const rain=(d.precipitation_probability_max[0]??0);
+  const emoji=/clear/.test(cond)?"\u2600\uFE0F":/partly/.test(cond)?"\u26C5":/overcast/.test(cond)?"\u2601\uFE0F":/fog/.test(cond)?"\uD83C\uDF2B\uFE0F":/drizzle|rain|shower/.test(cond)?"\uD83C\uDF27\uFE0F":/snow/.test(cond)?"\u2744\uFE0F":/thunder|storm/.test(cond)?"\u26C8\uFE0F":"\uD83C\uDF24\uFE0F";
+  try{ openMini("Weather in "+name,
+    '<div style="text-align:center;padding:6px">'+
+    '<div style="font-size:54px;line-height:1.2">'+emoji+'</div>'+
+    '<div style="font-size:46px;font-weight:700;margin:2px 0">'+temp+'°F</div>'+
+    '<div style="font-size:18px;opacity:.85;text-transform:capitalize">'+cond+'</div>'+
+    '<div style="margin-top:10px;font-size:15px;opacity:.7">High '+high+'°F &middot; Low '+low+'°F &middot; Rain '+rain+'%</div>'+
+    '</div>',true); }catch(e){}
+  return "In "+name+" it's "+temp+"°F and "+cond+", humidity "+c.relative_humidity_2m+"%, wind "+Math.round(c.wind_speed_10m)+" mph. "+
+    "Today's high "+high+", low "+low+
+    ", rain chance "+rain+"%. Tomorrow: high "+Math.round(d.temperature_2m_max[1])+", low "+Math.round(d.temperature_2m_min[1])+".";
 }
 async function tryWeather(tl,text){
   if(!/weather/.test(tl)) return false;
@@ -2135,6 +2202,41 @@ async function answerWikiFallback(question,query){
   finally{ genEnd(); }
   return true;
 }
+async function tryDictionary(tl,text){
+  // "what does X mean" / "define X" -> free online dictionary, answered like the Wikipedia card
+  let m=tl.match(/^(?:what does|what'?s the (?:definition|meaning) of|what is the (?:definition|meaning) of|define|definition of)\s+(.+)/);
+  let q=m?m[1].trim().replace(/[?.!]+$/,"").replace(/\s+means?$/i,"").replace(/^(?:the|a)\s+word\s+/i,"").trim():"";
+  if(!q||/\s/.test(q)) return false; // not a single word -> let Wikipedia have it
+  if(!needWeb()) return true;
+  hideAnswerCard();
+  setSubtitle("Looking that up\u2026");
+  utter("Looking that up.");
+  try{
+    const r=await fetch("https://api.dictionaryapi.dev/api/v2/entries/en/"+encodeURIComponent(q.toLowerCase()));
+    if(!r.ok) return false; // word not in the dictionary -> fall through to Wikipedia
+    const j=await r.json();
+    const e=j&&j[0];
+    if(!e||!e.meanings||!e.meanings.length) return false;
+    const defs=[];
+    for(const mn of e.meanings){
+      for(const d of (mn.definitions||[]).slice(0,2)){
+        if(d&&d.definition){ defs.push({pos:mn.partOfSpeech||"",def:d.definition.replace(/\.*$/,"")}); if(defs.length>=3) break; }
+      }
+      if(defs.length>=3) break;
+    }
+    if(!defs.length) return false;
+    const word=cap1(e.word||q), phon=e.phonetic?("  "+e.phonetic):"";
+    const an=/^[aeiou]/i.test(defs[0].pos||"")?"an":"a";
+    let spoken=word+"."+(defs[0].pos?(" As "+an+" "+defs[0].pos+", it means "+defs[0].def+"."):(" It means "+defs[0].def+"."));
+    if(defs[1]) spoken+=" It can also mean "+defs[1].def+".";
+    const cardText=defs.map((d,i)=>(i+1)+". "+(d.pos?("("+d.pos+") "):"")+d.def+".").join("\n");
+    showAnswerCard({title:word+phon,image:null,text:cardText});
+    addMsg("luna",'',"<b>"+esc(word)+"</b>"+esc(phon)+"<br>"+defs.map((d,i)=>"<b>"+(i+1)+".</b> "+(d.pos?("<i>"+esc(d.pos)+"</i> \u2014 "):"")+esc(d.def)+".").join("<br>"));
+    speak(spoken,{chat:false,onDone:()=>{ if(!S.muted) cardUntilDone(); }});
+  }catch(e){ loadFail(); }
+  return true;
+}
+
 async function tryWiki(tl,text){
   let m=tl.match(/^(?:who['’]?s|who is|who are|who was|what['’]?s|what is|what are|what was|what does|tell me about|define|describe|explain|where is|where are)\s+(.+)/);
   let q=m?m[1].trim().replace(/\?$/,"").replace(/\s+means?$/i,""):null;
@@ -2220,11 +2322,13 @@ async function tryBrain(tl,text){
       "You can also build simple stylized 3D models right on the device when asked ('generate a 3D model of …') — they're charmingly blocky, not photoreal, and they save to a 3D gallery; 'find a 3D model of …' searches the web for a real one. "+
       "When the user asks for a 3D model in ANY wording, it is built instantly and shown in a viewer window — never ask what style they want, and never say it will be ready soon or saved later; just confirm once it's built. "+
       "If you genuinely don't know the answer to a factual question, reply with exactly: RESEARCH: <a short search query> — and nothing else. "+
+      "CONVERSATION MEMORY: the prompt begins with your recent conversation with them. If their message is a reply or follow-up to something you just said (yes / no / why / tell me more / what about...) answer in that context — never treat it as a brand-new unrelated question. "+
       "If the user wants to buy something or find a place to stay, don't just chat — ask for their budget first (and trip dates for stays), then recommend a short list of the best options with quick pros and cons. "+
       "If they ask you to write an essay, story, steps, or similar, write it as plain text (short paragraphs, simple lists) so it can go in a side window — say you'll put it there. "+
       "If they ask to send an email, don't write it in chat — tell them you'll open the email composer and walk them through it. "+
       "If asked to do something a web page can't do (control the OS, install apps, read arbitrary files), be honest in one sentence and offer what you CAN do instead.";
-    let ans=await brainRaw(text.slice(0,400),sys,20000); // primary brain (fast), pollinations as backup
+    const convo=histPrompt(); pushHist("user",text);
+    let ans=await brainRaw((convo+text).slice(0,1400),sys,20000); // primary brain (fast), pollinations as backup
     ans=ans.replace(/^"+|"+$/g,"");
     if(!ans||ans.length<2) throw 0;
     const rm=ans.match(/^\s*RESEARCH:\s*(.+?)\s*$/i);
