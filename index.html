@@ -27,6 +27,14 @@
     transition:.2s; backdrop-filter:blur(6px);
   }
   #menuBtn:hover{border-color:var(--blue); box-shadow:0 0 14px rgba(63,169,255,.35);}
+  #galBtn,#btn3d{
+    position:fixed; top:18px; z-index:40;
+    width:46px; height:46px; border-radius:12px; cursor:pointer;
+    background:var(--panel); border:1px solid var(--line); color:var(--text); font-size:22px;
+    transition:.2s; backdrop-filter:blur(6px);
+  }
+  #galBtn{right:76px;} #btn3d{right:130px;}
+  #galBtn:hover,#btn3d:hover{border-color:var(--blue); box-shadow:0 0 14px rgba(63,169,255,.35);}
   #statusLine{
     position:fixed; top:24px; left:88px; z-index:40; display:flex; align-items:center; gap:8px;
     font-size:12px; letter-spacing:2px; color:var(--muted);
@@ -292,7 +300,7 @@
   body.light #typeRow input, body.light .addrow input{background:#fffdf6;}
   body.light #aboutCard{background:#fffdf6;}
   body.light #btnMic{background:radial-gradient(circle at 35% 30%, #fff3d9, #ffe3ae); box-shadow:0 0 0 2px rgba(255,154,60,.55), 0 0 26px rgba(255,170,60,.4);}
-  body.light #menuBtn:hover, body.light #typeRow button:hover, body.light .dbtn:hover{border-color:#ff9a3c; box-shadow:0 0 12px rgba(255,154,60,.35);}
+  body.light #menuBtn:hover, body.light #galBtn:hover, body.light #btn3d:hover, body.light #typeRow button:hover, body.light .dbtn:hover{border-color:#ff9a3c; box-shadow:0 0 12px rgba(255,154,60,.35);}
   body.light .row .val{color:#d97c1e;}
   body.light .sec-title{color:#d97c1e;}
   @media (max-width:760px){
@@ -304,6 +312,20 @@
 <body>
 
 <button id="menuBtn" title="Settings">☰</button>
+<button id="galBtn" title="Image gallery">🖼️</button>
+<button id="btn3d" title="3D gallery">🧊</button>
+<script type="importmap">
+{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+window.LUNA3D={THREE,OrbitControls,GLTFLoader};
+</script>
 <div id="statusLine"><span id="statusDot"></span><span id="statusText">NOT LISTENING</span></div>
 
 <main id="stage">
@@ -489,6 +511,8 @@ function toggleSettings(force){
   if(!$("aboutWin").classList.contains("hidden")) setTimeout(placeAbout, 320);
 }
 menuBtn.onclick=()=>toggleSettings();
+$("galBtn").onclick=()=>showGallery();
+$("btn3d").onclick=()=>showGallery3D();
 settingsClose.onclick=()=>toggleSettings(false);
 $("panelScrim").onclick=()=>toggleSettings(false);
 document.addEventListener("keydown",e=>{
@@ -1385,17 +1409,18 @@ function flowNext(){
 }
 async function brainRaw(prompt,sys,ms){
   try{
+    return await brainLLM7(prompt,sys,ms); // primary brain: fast keyless endpoint
+  }catch(e){
+    // primary down? fall back to pollinations
     const url="https://text.pollinations.ai/"+encodeURIComponent(prompt.slice(0,1400))+"?system="+encodeURIComponent(sys||"");
     const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),ms||18000);
     const r=await fetch(url,{signal:ctrl.signal}); clearTimeout(to);
     if(!r.ok) throw 0;
     return (await r.text()).trim();
-  }catch(e){
-    return brainBackup(prompt,sys,ms); // pollinations down? fall back to the backup brain
   }
 }
-// backup brain: a free keyless OpenAI-compatible endpoint, used only when pollinations fails
-async function brainBackup(prompt,sys,ms){
+// primary brain: a free keyless OpenAI-compatible endpoint (fast, ~2s answers)
+async function brainLLM7(prompt,sys,ms){
   const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),ms||25000);
   const r=await fetch("https://api.llm7.io/v1/chat/completions",{method:"POST",signal:ctrl.signal,
     headers:{"Content-Type":"application/json"},
@@ -1409,6 +1434,8 @@ async function brainBackup(prompt,sys,ms){
   if(!t||!t.trim()) throw 0;
   return t.trim();
 }
+// legacy alias: pollinations is now the backup brain
+async function brainBackup(prompt,sys,ms){ return brainLLM7(prompt,sys,ms); }
 function optionUrl(kind,name,s){
   if(kind==="stay") return "https://www.google.com/search?q="+encodeURIComponent(name+" "+(s.destination||"")+" cabin rental");
   return "https://www.google.com/search?tbm=shop&q="+encodeURIComponent(name);
@@ -1601,8 +1628,6 @@ function popupBlockedNote(){
 }
 function openUrl(url,label,spoken){
   addMsg("luna","",esc(label)+': <a href="'+url+'" target="_blank" rel="noopener">open</a>');
-  setSubtitle(spoken);
-  utter(spoken);
   try{ const w=window.open(url,"_blank"); if(!w) popupBlockedNote(); }catch(e){ popupBlockedNote(); }
 }
 // explicit "…in a window" → youtube plays inside a mini window instead of a tab
@@ -1613,9 +1638,6 @@ function openYouTubeWindow(q){
     'title="YouTube results" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>'+
     '<p style="margin-top:8px"><a href="'+url+'" target="_blank" rel="noopener">Open on YouTube</a></p>');
   addMsg("luna","",'YouTube results for <b>'+esc(q)+'</b> — playing in the mini window. <a href="'+url+'" target="_blank" rel="noopener">Open on YouTube</a>');
-  const spoken="Pulling up YouTube results for "+q+", in a window.";
-  setSubtitle(spoken);
-  utter(spoken);
 }
 // tidy up a YouTube query: "youtube about fortnite", "a video on youtube about cats"
 // -> "fortnite", "cats"
@@ -2103,21 +2125,13 @@ async function tryBrain(tl,text){
       "Never claim to be Muse, ChatGPT, Meta AI, or any other AI — you are "+S.aiName+". "+
       "You can generate images yourself when asked — image creation is built right into you, with prompt enhancement for better quality. If asked how you make images, say in one sentence that you create them yourself; never volunteer any company, API, or model name. "+
       "You have two image engines the user can switch between by voice ('use Stable Horde for images' / 'use Pollinations for images') or in Settings: Pollinations (fast, a few seconds, the default) and Stable Horde (slower, about a minute, community-run GPUs with different models that sometimes render better). If they ask which engine you're using or ask to compare them, name them plainly and describe the tradeoff. "+
+      "You can also build simple stylized 3D models right on the device when asked ('generate a 3D model of …') — they're charmingly blocky, not photoreal, and they save to a 3D gallery; 'find a 3D model of …' searches the web for a real one. "+
       "If you genuinely don't know the answer to a factual question, reply with exactly: RESEARCH: <a short search query> — and nothing else. "+
       "If the user wants to buy something or find a place to stay, don't just chat — ask for their budget first (and trip dates for stays), then recommend a short list of the best options with quick pros and cons. "+
       "If they ask you to write an essay, story, steps, or similar, write it as plain text (short paragraphs, simple lists) so it can go in a side window — say you'll put it there. "+
       "If they ask to send an email, don't write it in chat — tell them you'll open the email composer and walk them through it. "+
       "If asked to do something a web page can't do (control the OS, install apps, read arbitrary files), be honest in one sentence and offer what you CAN do instead.";
-    const url="https://text.pollinations.ai/"+encodeURIComponent(text.slice(0,400))+"?system="+encodeURIComponent(sys);
-    let ans;
-    try{
-      const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),15000);
-      const r=await fetch(url,{signal:ctrl.signal}); clearTimeout(to);
-      if(!r.ok) throw 0;
-      ans=(await r.text()).trim();
-    }catch(e){
-      ans=await brainBackup(text.slice(0,400),sys,20000); // pollinations down? backup brain
-    }
+    let ans=await brainRaw(text.slice(0,400),sys,20000); // primary brain (fast), pollinations as backup
     ans=ans.replace(/^"+|"+$/g,"");
     if(!ans||ans.length<2) throw 0;
     const rm=ans.match(/^\s*RESEARCH:\s*(.+?)\s*$/i);
@@ -2222,6 +2236,14 @@ async function tryFiles(tl,text){
     if(!window.showOpenFilePicker) speak("Pick a file and I'll pop it open in a mini window.");
     return true;
   }
+  if(/\b(3-?d gallery|my 3-?d models|my models|show.*3-?d)\b/.test(tl)){
+    showGallery3D();
+    return true;
+  }
+  let m3=tl.match(/\bgenerate (a )?3-?d model of (.+)/);
+  if(m3){ gen3D(m3[2].trim()); return true; }
+  m3=tl.match(/\b(find|search for)( a)? 3-?d model of (.+)/);
+  if(m3){ find3DModel(m3[3].trim()); return true; }
   if(/\b(gallery|my images|my pictures|generated images|show.*gallery)\b/.test(tl)){
     showGallery();
     return true;
@@ -2242,8 +2264,11 @@ let galleryDB=null;
 function dbOpen(){
   return new Promise(res=>{
     try{
-      const r=indexedDB.open("luna_gallery",1);
-      r.onupgradeneeded=()=>{ r.result.createObjectStore("imgs",{keyPath:"id",autoIncrement:true}); };
+      const r=indexedDB.open("luna_gallery",2);
+      r.onupgradeneeded=()=>{ const db=r.result;
+        if(!db.objectStoreNames.contains("imgs")) db.createObjectStore("imgs",{keyPath:"id",autoIncrement:true});
+        if(!db.objectStoreNames.contains("models3d")) db.createObjectStore("models3d",{keyPath:"id",autoIncrement:true});
+      };
       r.onsuccess=()=>{ galleryDB=r.result; res(); };
       r.onerror=()=>res();
     }catch(e){ res(); }
@@ -2272,6 +2297,205 @@ function showGallery(){
     };
     req.onerror=()=>loadFail();
   }catch(e){ loadFail(); }
+}
+
+/* ---------------- 3D gallery + on-device model builder ---------------- */
+// the only free AI text-to-3D services either need an API key or block browser
+// calls, so LUNA builds stylized models locally with three.js: instant, offline,
+// no key. Real AI-made models can be found on the web and saved by .glb link.
+function TH(){ return window.LUNA3D && window.LUNA3D.THREE; }
+function M3(parent,geo,color,x,y,z){
+  const T=TH();
+  const m=new T.Mesh(geo,new T.MeshStandardMaterial({color:color,flatShading:true,roughness:.75,metalness:.05}));
+  m.position.set(x||0,y||0,z||0); parent.add(m); return m;
+}
+const G3={
+  box:(w,h,d)=>new (TH().BoxGeometry)(w,h,d),
+  cyl:(rt,rb,h,s)=>new (TH().CylinderGeometry)(rt,rb,h,s||14),
+  sph:(r,w)=>new (TH().SphereGeometry)(r,w||18,14),
+  cone:(r,h,s)=>new (TH().ConeGeometry)(r,h,s||14),
+  oct:r=>new (TH().OctahedronGeometry)(r)
+};
+function pal3d(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0;
+  const C=[0x3fa9ff,0xff5a5a,0x51d651,0xffb340,0xb678ff,0xff6fb5,0x4dd0e1,0xffd23f,0xff8a5a,0x7dff6f];
+  return {main:C[h%C.length],accent:C[(h>>4)%C.length],dark:0x2a2f3a,seed:s}; }
+const BUILD3D={
+car(g,P){ M3(g,G3.box(2.2,.6,1),P.main,0,.55,0); M3(g,G3.box(1.2,.5,.9),P.accent,-.1,1.05,0);
+  [[-.75,.45],[.75,.45],[-.75,-.45],[.75,-.45]].forEach(p=>{ const w=M3(g,G3.cyl(.32,.32,.25),P.dark,p[0],.32,p[1]); w.rotation.x=Math.PI/2; }); },
+rocket(g,P){ M3(g,G3.cyl(.45,.45,1.6),P.main,0,1,0); M3(g,G3.cone(.45,.8),P.accent,0,2.2,0);
+  for(let i=0;i<3;i++){ const a=i*Math.PI*2/3,f=M3(g,G3.box(.12,.7,.5),P.accent,Math.sin(a)*.5,.45,Math.cos(a)*.5); f.rotation.y=a; }
+  M3(g,G3.sph(.18),0xbfe9ff,0,1.3,.42); M3(g,G3.cyl(.2,.3,.3),P.dark,0,.05,0); },
+house(g,P){ M3(g,G3.box(2,1.4,1.8),P.main,0,.7,0); const r=M3(g,G3.cone(1.5,1,4),P.accent,0,2,0); r.rotation.y=Math.PI/4;
+  M3(g,G3.box(.5,.9,.1),P.dark,0,.45,.91); M3(g,G3.box(.4,.4,.1),0xbfe9ff,-.6,.9,.91); M3(g,G3.box(.4,.4,.1),0xbfe9ff,.6,.9,.91); },
+robot(g,P){ M3(g,G3.box(1.1,1.3,.7),P.main,0,1.15,0); M3(g,G3.sph(.5),P.accent,0,2.25,0);
+  M3(g,G3.box(.16,.16,.1),0x111111,-.18,2.3,.45); M3(g,G3.box(.16,.16,.1),0x111111,.18,2.3,.45);
+  M3(g,G3.box(.28,.9,.28),P.main,-.75,1.15,0); M3(g,G3.box(.28,.9,.28),P.main,.75,1.15,0);
+  M3(g,G3.cyl(.2,.24,.5),P.dark,-.3,.25,0); M3(g,G3.cyl(.2,.24,.5),P.dark,.3,.25,0);
+  M3(g,G3.cyl(.04,.04,.5),P.dark,0,2.95,0); M3(g,G3.sph(.09),0xffd23f,0,3.2,0); },
+tree(g,P){ M3(g,G3.cyl(.18,.24,1),0x8a5a2b,0,.5,0); M3(g,G3.cone(1,1.4),0x2f9e44,0,1.6,0); M3(g,G3.cone(.75,1.1),0x2f9e44,0,2.4,0); },
+mushroom(g,P){ M3(g,G3.cyl(.28,.36,1),0xf5e6c8,0,.5,0); const c=M3(g,G3.sph(.85),0xe03131,0,1.25,0); c.scale.y=.62;
+  M3(g,G3.sph(.14),0xffffff,-.35,1.55,.35); M3(g,G3.sph(.11),0xffffff,.3,1.6,-.2); },
+chair(g,P){ M3(g,G3.box(1.1,.14,1.1),P.main,0,.85,0); M3(g,G3.box(1.1,1,.14),P.main,0,1.4,-.5);
+  [[-.45,-.45],[.45,-.45],[-.45,.45],[.45,.45]].forEach(p=>M3(g,G3.box(.12,.85,.12),P.dark,p[0],.42,p[1])); },
+table(g,P){ M3(g,G3.box(2,.14,1.2),P.main,0,1,0);
+  [[-.85,-.45],[.85,-.45],[-.85,.45],[.85,.45]].forEach(p=>M3(g,G3.box(.14,1,.14),P.dark,p[0],.5,p[1])); },
+sword(g,P){ M3(g,G3.box(.16,1.8,.04),0xdfe7ef,0,1.5,0); const t=M3(g,G3.cone(.11,.3,4),0xdfe7ef,0,2.55,0); t.rotation.y=Math.PI/4;
+  M3(g,G3.box(.7,.12,.12),P.accent,0,.5,0); M3(g,G3.cyl(.07,.07,.5),P.dark,0,.2,0); M3(g,G3.sph(.1),P.accent,0,-.08,0); },
+crown(g,P){ M3(g,G3.cyl(.55,.6,.5,10),P.main,0,.5,0);
+  for(let i=0;i<6;i++){ const a=i*Math.PI/3; M3(g,G3.cone(.14,.5,6),P.accent,Math.sin(a)*.5,1,Math.cos(a)*.5); M3(g,G3.sph(.07),0xffffff,Math.sin(a)*.55,.82,Math.cos(a)*.55); } },
+lamp(g,P){ M3(g,G3.cyl(.4,.5,.12),P.dark,0,.06,0); M3(g,G3.cyl(.06,.06,1.6),P.dark,0,.9,0);
+  M3(g,G3.cone(.55,.6,12),P.main,0,1.9,0); M3(g,G3.sph(.16),0xffe9a3,0,1.62,0); },
+dog(g,P){ M3(g,G3.box(1.4,.7,.7),P.main,0,.85,0); M3(g,G3.box(.6,.6,.6),P.main,.9,1.25,0); M3(g,G3.box(.35,.3,.4),P.accent,1.25,1.1,0);
+  M3(g,G3.cone(.12,.3),P.main,.75,1.7,.2); M3(g,G3.cone(.12,.3),P.main,.75,1.7,-.2);
+  [[-.5,.25],[-.5,-.25],[.5,.25],[.5,-.25]].forEach(p=>M3(g,G3.box(.22,.5,.22),P.main,p[0],.25,p[1]));
+  const t=M3(g,G3.cyl(.07,.07,.7),P.main,-.75,1.1,0); t.rotation.z=.7; },
+cat(g,P){ M3(g,G3.box(1.1,.6,.6),P.main,0,.7,0); M3(g,G3.box(.5,.5,.5),P.main,.7,1.05,0);
+  M3(g,G3.cone(.13,.28,4),P.main,.6,1.42,.18); M3(g,G3.cone(.13,.28,4),P.main,.6,1.42,-.18);
+  [[-.35,.2],[-.35,-.2],[.35,.2],[.35,-.2]].forEach(p=>M3(g,G3.box(.18,.4,.18),P.main,p[0],.2,p[1]));
+  const t=M3(g,G3.cyl(.06,.06,.9),P.main,-.6,.8,0); t.rotation.z=-.5; },
+spaceship(g,P){ const b=M3(g,G3.sph(.7),P.main,0,.8,0); b.scale.set(1.4,.7,1);
+  const n=M3(g,G3.cone(.5,.9,12),P.accent,1.4,.8,0); n.rotation.z=-Math.PI/2;
+  M3(g,G3.box(1.2,.12,.9),P.dark,-.2,.45,.75); M3(g,G3.box(1.2,.12,.9),P.dark,-.2,.45,-.75);
+  const e=M3(g,G3.cyl(.22,.28,.4),0x66ccff,-1.05,.8,0); e.rotation.z=Math.PI/2; },
+castle(g,P){ [[-1.2,-1.2],[1.2,-1.2],[-1.2,1.2],[1.2,1.2]].forEach(p=>{ M3(g,G3.cyl(.45,.45,2.4,10),P.main,p[0],1.2,p[1]); M3(g,G3.cone(.6,.9,10),P.accent,p[0],2.85,p[1]); });
+  M3(g,G3.box(3.3,1.4,.5),P.main,0,.7,1.2); M3(g,G3.box(3.3,1.4,.5),P.main,0,.7,-1.2); M3(g,G3.box(.8,1,.6),P.dark,0,.5,1.2); },
+boat(g,P){ const h=M3(g,G3.box(2.4,.7,1),P.main,0,.5,0); h.scale.z=.8;
+  M3(g,G3.cyl(.06,.06,2.2),P.dark,0,1.7,0); M3(g,G3.box(.08,1.4,1.1),0xffffff,.45,1.9,0); },
+plane(g,P){ const f=M3(g,G3.cyl(.35,.25,2.6,12),P.main,0,.9,0); f.rotation.z=Math.PI/2;
+  M3(g,G3.box(.9,.1,2.4),P.accent,0,.95,0); M3(g,G3.box(.7,.1,.9),P.accent,-1.2,1.1,0); M3(g,G3.box(.1,.6,.5),P.accent,-1.2,1.2,0); },
+snowman(g,P){ M3(g,G3.sph(.7),0xffffff,0,.7,0); M3(g,G3.sph(.5),0xffffff,0,1.65,0); M3(g,G3.sph(.35),0xffffff,0,2.35,0);
+  const n=M3(g,G3.cone(.08,.4,8),0xff8a3c,0,2.35,.38); n.rotation.x=Math.PI/2;
+  M3(g,G3.sph(.06),0x111111,-.12,2.45,.3); M3(g,G3.sph(.06),0x111111,.12,2.45,.3); },
+cactus(g,P){ M3(g,G3.cyl(.3,.34,1.8,10),0x2f9e44,0,.9,0); M3(g,G3.sph(.3,10),0x2f9e44,0,1.8,0);
+  M3(g,G3.cyl(.18,.2,.9,8),0x2f9e44,-.45,1.1,0); M3(g,G3.sph(.18,8),0x2f9e44,-.45,1.55,0); },
+diamond(g,P){ M3(g,G3.oct(.9),0x9be8ff,0,1,0); M3(g,G3.cyl(.5,.6,.2,8),P.dark,0,.12,0); },
+guitar(g,P){ const b=M3(g,G3.sph(.55),P.main,0,.8,0); b.scale.set(1,1.2,.45);
+  const n=M3(g,G3.box(.16,1.6,.12),P.dark,.55,1.5,0); n.rotation.z=-.5; const h=M3(g,G3.box(.4,.5,.14),P.dark,1.15,2.2,0); h.rotation.z=-.5; },
+sculpture(g,P){ let h=7; const s=P.seed||"x"; for(let i=0;i<s.length;i++) h=(h*33+s.charCodeAt(i))>>>0;
+  let y=0; for(let i=0;i<5;i++){ h=(h*1103515245+12345)>>>0; const k=h%3,w=.4+(h%60)/60;
+    if(k===0) M3(g,G3.box(w,w,w),i%2?P.main:P.accent,0,y+w/2,0);
+    else if(k===1) M3(g,G3.sph(w/1.4),i%2?P.main:P.accent,0,y+w/2,0);
+    else M3(g,G3.cone(w/1.4,w),i%2?P.main:P.accent,0,y+w/2,0);
+    y+=w; } }
+};
+function pickBuilder3D(p){
+  const t=" "+p.toLowerCase()+" ";
+  const K={car:["car","truck","taxi","vehicle"],rocket:["rocket","missile"],house:["house","home","cabin","hut"],
+    robot:["robot","android"],tree:["tree","oak","pine"],mushroom:["mushroom","toadstool"],chair:["chair","seat","throne"],
+    table:["table","desk"],sword:["sword","blade","katana"],crown:["crown","tiara"],lamp:["lamp","lantern"],
+    dog:["dog","puppy","hound"],cat:["cat","kitten","kitty"],spaceship:["spaceship","ufo","saucer","starship"],
+    castle:["castle","fort"],boat:["boat","ship","sailboat","yacht"],plane:["plane","airplane","jet","aircraft"],
+    snowman:["snowman"],cactus:["cactus"],diamond:["diamond","gem","crystal","jewel"],guitar:["guitar"]};
+  for(const k in K) if(K[k].some(w=>t.indexOf(w)>-1)) return k;
+  return "sculpture";
+}
+function buildProc(recipe,name){
+  const T=TH(),g=new T.Group();
+  (BUILD3D[recipe]||BUILD3D.sculpture)(g,pal3d(name||recipe));
+  return g;
+}
+/* 3D gallery storage */
+function saveModel3D(name,kind,data,cb){
+  if(!galleryDB){ if(cb)cb(null); return; }
+  try{
+    const q=galleryDB.transaction("models3d","readwrite").objectStore("models3d").add({name:name,kind:kind,data:data,ts:Date.now()});
+    q.onsuccess=()=>{ if(cb)cb(q.result); }; q.onerror=()=>{ if(cb)cb(null); };
+  }catch(e){ if(cb)cb(null); }
+}
+function getModel3D(id,cb){
+  try{
+    const q=galleryDB.transaction("models3d","readonly").objectStore("models3d").get(id);
+    q.onsuccess=()=>{ if(cb)cb(q.result||null); };
+  }catch(e){ if(cb)cb(null); }
+}
+function delModel3D(id){
+  try{ galleryDB.transaction("models3d","readwrite").objectStore("models3d").delete(id); }catch(e){}
+}
+function showGallery3D(){
+  if(!TH()){ speak("My 3D viewer is still loading — give it a few seconds and tap again."); return; }
+  if(!galleryDB){ speak("Your 3D gallery isn't ready yet."); return; }
+  try{
+    const req=galleryDB.transaction("models3d","readonly").objectStore("models3d").getAll();
+    req.onsuccess=()=>{
+      const items=(req.result||[]).reverse();
+      const cards=items.map(it=>
+        "<div style='background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center'>"+
+        "<div style='font-size:34px;cursor:pointer' data-view='"+it.id+"' title='View'>🧊</div>"+
+        "<div style='font-size:12px;margin:6px 0'>"+esc(it.name)+"</div>"+
+        "<button data-del='"+it.id+"' style='font-size:11px;cursor:pointer'>delete</button></div>").join("");
+      openMini("🧊 3D Gallery ("+items.length+")",
+        (items.length? "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>"+cards+"</div>"
+          : "<p>No 3D models yet. Say: <b>generate a 3D model of</b> something, and I'll build it on the spot.</p>")+
+        "<div style='margin-top:10px;display:flex;gap:6px'><input id='glbLink' placeholder='Paste a .glb link to save it' style='flex:1'> <button id='glbAdd'>Add</button></div>"+
+        "<p style='color:var(--muted);margin-top:8px'>Tip: say <b>find a 3D model of</b> something and I'll search the web for a real one — then paste its .glb link above to keep it.</p>");
+      document.querySelectorAll("[data-view]").forEach(el=>{ el.onclick=()=>getModel3D(+el.dataset.view,viewModel3D); });
+      document.querySelectorAll("[data-del]").forEach(el=>{ el.onclick=()=>{ delModel3D(+el.dataset.del); showGallery3D(); }; });
+      $("glbAdd").onclick=()=>{
+        const u=$("glbLink").value.trim(); if(!u) return;
+        const nm=(u.split("/").pop().split("?")[0]||"model").replace(/\.glb$/i,"");
+        saveModel3D(nm,"glb",u,()=>{ showGallery3D(); });
+        speak("Saved to your 3D gallery.");
+      };
+      speak(items.length? "Here's your 3D gallery — "+items.length+" model"+(items.length>1?"s":"")+". Tap one to spin it around."
+        : "Your 3D gallery is empty. Say: generate a 3D model of, then describe what you want.");
+    };
+    req.onerror=()=>loadFail();
+  }catch(e){ loadFail(); }
+}
+function viewModel3D(it){
+  if(!it) return;
+  if(!TH()){ speak("My 3D viewer is still loading — try again in a few seconds."); return; }
+  const T=TH();
+  openMini("🧊 "+it.name,
+    "<div id='glview' style='width:100%;height:360px;border-radius:8px;overflow:hidden'></div>"+
+    "<p style='color:var(--muted);margin-top:8px'>Drag to spin · scroll to zoom. "+
+    (it.kind==="glb" ? "<a href='"+esc(it.data)+"' target='_blank' rel='noopener'>Download .glb</a>" : "Built right on this device.")+"</p>");
+  try{ if(window._gl3dCleanup) window._gl3dCleanup(); }catch(e){}
+  const el=document.getElementById("glview");
+  const W=el.clientWidth||320,H=360;
+  const renderer=new T.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setSize(W,H); el.appendChild(renderer.domElement);
+  const scene=new T.Scene();
+  const cam=new T.PerspectiveCamera(45,W/H,.1,100);
+  const ctl=new window.LUNA3D.OrbitControls(cam,renderer.domElement);
+  ctl.enableDamping=true;
+  scene.add(new T.HemisphereLight(0xffffff,0x223344,1.1));
+  const dl=new T.DirectionalLight(0xffffff,1.2); dl.position.set(4,6,4); scene.add(dl);
+  scene.add(new T.GridHelper(6,12,0x3fa9ff,0x1c2a3a));
+  function frame(obj){
+    const b=new T.Box3().setFromObject(obj), c=b.getCenter(new T.Vector3());
+    const s=Math.max(b.getSize(new T.Vector3()).length(),.5);
+    ctl.target.copy(c); cam.position.set(c.x+s*.75,c.y+s*.55,c.z+s*.75);
+  }
+  if(it.kind==="glb"){
+    new window.LUNA3D.GLTFLoader().load(it.data,
+      gl=>{ scene.add(gl.scene); frame(gl.scene); },
+      undefined,
+      ()=>{ addMsg("luna","","Couldn't load that model link — it may not be a direct .glb file."); });
+  }else{
+    const obj=buildProc(it.data,it.name); scene.add(obj); frame(obj);
+  }
+  let raf=0;
+  (function loop(){ raf=requestAnimationFrame(loop); ctl.update(); renderer.render(scene,cam); })();
+  window._gl3dCleanup=()=>{ cancelAnimationFrame(raf); ctl.dispose(); renderer.dispose(); window._gl3dCleanup=null; };
+}
+const _closeMini3d=closeMini;
+closeMini=function(){ try{ if(window._gl3dCleanup) window._gl3dCleanup(); }catch(e){} _closeMini3d(); };
+/* generate + find */
+function gen3D(prompt){
+  if(!TH()){ speak("My 3D builder is still loading — give it a few seconds and ask again."); return; }
+  const recipe=pickBuilder3D(prompt);
+  const name=prompt.length>42?prompt.slice(0,42)+"…":prompt;
+  const sayName=recipe==="sculpture"?"an abstract 3D sculpture":"a stylized 3D "+recipe;
+  saveModel3D(name,"proc",recipe,function(id){
+    addMsg("luna","","Built "+esc(sayName)+" of <b>"+esc(name)+"</b> — saved to your 3D gallery.");
+    utter("Built you "+sayName+" of "+prompt+". It's in your 3D gallery — tap the cube button up top to spin it around.");
+    if(id!=null) getModel3D(id,viewModel3D);
+  });
+}
+function find3DModel(q){
+  openUrl("https://sketchfab.com/search?q="+encodeURIComponent(q),"3D models: "+q);
+  addMsg("luna","","I opened a search for <b>"+esc(q)+"</b> 3D models. Found one you like? Copy its <b>.glb</b> download link and paste it into the 3D gallery — tap 🧊 up top, then Add — and I'll keep it forever.");
 }
 
 /* ---------------- image generation ---------------- */
@@ -2961,7 +3185,7 @@ pokeDock(); // dock fades away a few seconds after load until needed
 // so Chrome begins listening silently — no manual toggle needed
 setTimeout(()=>{ if(!S.listening) toggleMic(); }, 800);
 if(S.name) addMsg("luna","Welcome back, "+esc(S.name)+'. I\'m listening — just say "Hey '+esc(S.aiName)+'".');
-else addMsg("luna","",'Hi, I\'m <b>'+esc(S.aiName)+'</b>. I\'m already listening — just say <b>"Hey '+esc(S.aiName)+'"</b>, or type in the bar under my icon. Open <b>☰</b> for settings, memories, and notes.');
+else addMsg("luna","",'Hi, I\'m <b>'+esc(S.aiName)+'</b>. I\'m already listening — just say <b>"Hey '+esc(S.aiName)+'"</b>, or type in the bar under my icon. Open <b>☰</b> for settings, memories, and notes. 🖼️ opens your image gallery, 🧊 your 3D gallery — or say "generate a 3D model of" anything and I\'ll build it on the spot.');
 </script>
 </body>
 </html>
