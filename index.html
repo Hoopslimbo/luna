@@ -2370,21 +2370,19 @@ function saveToGallery(prompt,url){
   try{ galleryDB.transaction("imgs","readwrite").objectStore("imgs").add({prompt:prompt,url:url,ts:Date.now()}); }catch(e){}
 }
 function showGallery(){
-  if(!galleryDB){ speak("Your gallery isn't ready yet — generate an image first."); return; }
+  if(!galleryDB){ return; }
   try{
     const req=galleryDB.transaction("imgs","readonly").objectStore("imgs").getAll();
     req.onsuccess=()=>{
       const items=(req.result||[]).reverse();
       if(!items.length){
         openMini("🖼 Gallery","<p>No images yet. Say: <b>generate an image of</b>, then describe what you want.</p>");
-        speak("Your gallery is empty. Say: generate an image of, then describe what you want.");
         return;
       }
       openMini("🖼 Gallery ("+items.length+")",
         "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>"+
         items.map(i=>"<a href='"+i.url+"' target='_blank' rel='noopener' title='"+esc(i.prompt)+"'><img src='"+i.url+"' style='width:100%;border-radius:8px' alt='"+esc(i.prompt)+"'></a>").join("")+
         "</div><p style='color:var(--muted);margin-top:8px'>Tap any image to open it full size and save it.</p>");
-      speak("Here's your gallery — "+items.length+" image"+(items.length>1?"s":"")+". Tap one to open it full size and save it.");
     };
     req.onerror=()=>loadFail();
   }catch(e){ loadFail(); }
@@ -2503,8 +2501,8 @@ function delModel3D(id){
   try{ galleryDB.transaction("models3d","readwrite").objectStore("models3d").delete(id); }catch(e){}
 }
 function showGallery3D(){
-  if(!TH()){ speak("My 3D viewer is still loading — give it a few seconds and tap again."); return; }
-  if(!galleryDB){ speak("Your 3D gallery isn't ready yet."); return; }
+  if(!TH()){ return; }
+  if(!galleryDB){ return; }
   try{
     const req=galleryDB.transaction("models3d","readonly").objectStore("models3d").getAll();
     req.onsuccess=()=>{
@@ -2525,17 +2523,14 @@ function showGallery3D(){
         const u=$("glbLink").value.trim(); if(!u) return;
         const nm=(u.split("/").pop().split("?")[0]||"model").replace(/\.glb$/i,"");
         saveModel3D(nm,"glb",u,()=>{ showGallery3D(); });
-        speak("Saved to your 3D gallery.");
       };
-      speak(items.length? "Here's your 3D gallery — "+items.length+" model"+(items.length>1?"s":"")+". Tap one to spin it around."
-        : "Your 3D gallery is empty. Say: generate a 3D model of, then describe what you want.");
     };
     req.onerror=()=>loadFail();
   }catch(e){ loadFail(); }
 }
 function viewModel3D(it){
   if(!it) return;
-  if(!TH()){ speak("My 3D viewer is still loading — try again in a few seconds."); return; }
+  if(!TH()){ return; }
   const T=TH();
   openMini("🧊 "+it.name,
     "<div id='glview' style='width:100%;height:360px;border-radius:8px;overflow:hidden'></div>"+
