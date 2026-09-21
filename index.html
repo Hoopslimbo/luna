@@ -1384,11 +1384,30 @@ function flowNext(){
   runConcierge();
 }
 async function brainRaw(prompt,sys,ms){
-  const url="https://text.pollinations.ai/"+encodeURIComponent(prompt.slice(0,1400))+"?system="+encodeURIComponent(sys||"");
-  const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),ms||18000);
-  const r=await fetch(url,{signal:ctrl.signal}); clearTimeout(to);
+  try{
+    const url="https://text.pollinations.ai/"+encodeURIComponent(prompt.slice(0,1400))+"?system="+encodeURIComponent(sys||"");
+    const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),ms||18000);
+    const r=await fetch(url,{signal:ctrl.signal}); clearTimeout(to);
+    if(!r.ok) throw 0;
+    return (await r.text()).trim();
+  }catch(e){
+    return brainBackup(prompt,sys,ms); // pollinations down? fall back to the backup brain
+  }
+}
+// backup brain: a free keyless OpenAI-compatible endpoint, used only when pollinations fails
+async function brainBackup(prompt,sys,ms){
+  const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),ms||25000);
+  const r=await fetch("https://api.llm7.io/v1/chat/completions",{method:"POST",signal:ctrl.signal,
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({model:"mistral-Nemo-Instruct-2407",
+      messages:[{role:"system",content:sys||"You are a helpful assistant."},
+                {role:"user",content:prompt.slice(0,1400)}]})});
+  clearTimeout(to);
   if(!r.ok) throw 0;
-  return (await r.text()).trim();
+  const j=await r.json();
+  const t=j&&j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content;
+  if(!t||!t.trim()) throw 0;
+  return t.trim();
 }
 function optionUrl(kind,name,s){
   if(kind==="stay") return "https://www.google.com/search?q="+encodeURIComponent(name+" "+(s.destination||"")+" cabin rental");
@@ -2090,10 +2109,16 @@ async function tryBrain(tl,text){
       "If they ask to send an email, don't write it in chat — tell them you'll open the email composer and walk them through it. "+
       "If asked to do something a web page can't do (control the OS, install apps, read arbitrary files), be honest in one sentence and offer what you CAN do instead.";
     const url="https://text.pollinations.ai/"+encodeURIComponent(text.slice(0,400))+"?system="+encodeURIComponent(sys);
-    const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),15000);
-    const r=await fetch(url,{signal:ctrl.signal}); clearTimeout(to);
-    if(!r.ok) throw 0;
-    let ans=(await r.text()).trim().replace(/^"+|"+$/g,"");
+    let ans;
+    try{
+      const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),15000);
+      const r=await fetch(url,{signal:ctrl.signal}); clearTimeout(to);
+      if(!r.ok) throw 0;
+      ans=(await r.text()).trim();
+    }catch(e){
+      ans=await brainBackup(text.slice(0,400),sys,20000); // pollinations down? backup brain
+    }
+    ans=ans.replace(/^"+|"+$/g,"");
     if(!ans||ans.length<2) throw 0;
     const rm=ans.match(/^\s*RESEARCH:\s*(.+?)\s*$/i);
     if(rm&&rm[1]){
@@ -2884,7 +2909,7 @@ function setTheme(light){
   $("themeVal").textContent=light?"Light":"Dark";
   S.aiName=light?"Solar":"LUNA"; store.set("aiName",S.aiName);
   $("settingsName").textContent=S.aiName;
-  setSubtitle('Press the mic, then say "Hey '+S.aiName+'".');
+  setSubtitle('Say "Hey '+S.aiName+'" — I\'m listening.');
   speak(light?"Light mode on. I'm Solar now.":"Dark mode on. I'm LUNA again.");
 }
 // memories + notes inputs
@@ -2930,10 +2955,13 @@ renderMemories();
 renderTimers();
 refreshSettingsLabels();
 dbOpen(); // image gallery storage
-setSubtitle('Press the mic, then say "Hey '+S.aiName+'".');
+setSubtitle('Say "Hey '+S.aiName+'" — I\'m listening.');
 pokeDock(); // dock fades away a few seconds after load until needed
-if(S.name) addMsg("luna","Welcome back, "+esc(S.name)+'. Press the mic button, then say "Hey '+esc(S.aiName)+'".');
-else addMsg("luna","",'Hi, I\'m <b>'+esc(S.aiName)+'</b>. Press the <b>mic button</b>, then say <b>"Hey '+esc(S.aiName)+'"</b> — or just type in the bar under my icon. Open <b>☰</b> for settings, memories, and notes.');
+// mic auto-starts on load: permission was already granted for this page,
+// so Chrome begins listening silently — no manual toggle needed
+setTimeout(()=>{ if(!S.listening) toggleMic(); }, 800);
+if(S.name) addMsg("luna","Welcome back, "+esc(S.name)+'. I\'m listening — just say "Hey '+esc(S.aiName)+'".');
+else addMsg("luna","",'Hi, I\'m <b>'+esc(S.aiName)+'</b>. I\'m already listening — just say <b>"Hey '+esc(S.aiName)+'"</b>, or type in the bar under my icon. Open <b>☰</b> for settings, memories, and notes.');
 </script>
 </body>
 </html>
