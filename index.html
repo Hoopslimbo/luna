@@ -70,7 +70,7 @@
     background:var(--panel); border:1px solid var(--line); color:var(--text); font-size:22px;
     transition:.2s; backdrop-filter:blur(6px);
   }
-  #galBtn{right:76px;} #btn3d{right:130px;}
+  #galBtn{right:134px;} #btn3d{right:190px;}
   #galBtn:hover,#btn3d:hover{border-color:var(--blue); box-shadow:0 0 14px rgba(63,169,255,.35);}
   #statusLine{
     position:fixed; top:24px; left:88px; z-index:40; display:flex; align-items:center; gap:8px;
@@ -3094,11 +3094,23 @@ $("docCopy").onclick=async()=>{
 /* ---------------- notes tab: every window/card auto-saves a snapshot ---------------- */
 function getNotes(){ try{ return JSON.parse(localStorage.getItem("luna_notes")||"[]"); }catch(e){ return []; } }
 function setNotes(n){ try{ localStorage.setItem("luna_notes",JSON.stringify(n.slice(0,40))); }catch(e){} }
+// note titles should be specific, never the user's raw command —
+// strip leading wake words / filler command verbs ("find me a", "tell me", ...)
+// from any title before it lands in the notes tab
+function tidyTitle(t){
+  let s=String(t||"");
+  const m=s.match(/^([^\p{L}\p{N}]*)([\p{L}\p{N}].*)$/u);
+  if(!m) return s;
+  const head=m[1], rest=m[2];
+  const cleaned=rest.replace(/^(?:hey\s+(?:luna|solar)[,\s]+)?(?:please\s+)?(?:can\s+you\s+|could\s+you\s+)?(?:find|get|look\s*up|show|tell|give|make|play|open|search)(?:\s+me|\s+us)?\s+(?:a\s+|an\s+|the\s+|my\s+)?/i,"").trim();
+  if(!cleaned) return s;
+  return head+cleaned.charAt(0).toUpperCase()+cleaned.slice(1);
+}
 function noteSnap(title,html){
   if(!title||!html||html.length<10) return;
   if(/Popup test|Drafting|Generating/.test(title+html)) return;
   const notes=getNotes();
-  notes.unshift({q:S.lastCmd||"",title:title,html:html,ts:Date.now()});
+  notes.unshift({q:S.lastCmd||"",title:tidyTitle(title),html:html,ts:Date.now()});
   setNotes(notes);
   renderNotesPanel();
 }
