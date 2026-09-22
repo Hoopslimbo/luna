@@ -27,6 +27,43 @@
     transition:.2s; backdrop-filter:blur(6px);
   }
   #menuBtn:hover{border-color:var(--blue); box-shadow:0 0 14px rgba(63,169,255,.35);}
+  #notesBtn{
+    position:fixed; top:18px; right:78px; z-index:40;
+    width:46px; height:46px; border-radius:12px; cursor:pointer;
+    background:var(--panel); border:1px solid var(--line); color:var(--text); font-size:22px;
+    transition:.2s; backdrop-filter:blur(6px);
+  }
+  #notesBtn:hover{border-color:var(--blue); box-shadow:0 0 14px rgba(63,169,255,.35);}
+  /* ---------- notes tab: auto-saved snapshots of everything she shows you ---------- */
+  #notesPanel{position:fixed; top:0; right:0; bottom:0; width:330px; z-index:60;
+    background:var(--panel); border-left:1px solid var(--line); color:var(--text);
+    box-shadow:-10px 0 40px rgba(0,0,0,.4); backdrop-filter:blur(10px);
+    overflow-y:auto; padding:20px 0 30px;}
+  #notesHead{display:flex; align-items:center; justify-content:space-between;
+    padding:4px 20px 12px; font-weight:700; letter-spacing:1px; color:var(--blue);}
+  #notesHead button{background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer;}
+  #notesList{padding:0 12px;}
+  #notesList .empty{padding:16px; color:var(--muted); font-size:14px; text-align:center;}
+  .note-row{position:relative; border:1px solid var(--line); border-radius:10px;
+    padding:10px 34px 10px 12px; margin-bottom:8px; cursor:pointer; background:rgba(63,169,255,.05);}
+  .note-row:hover{border-color:var(--blue);}
+  .note-title{font-weight:700; color:var(--blue); font-size:14px; margin-bottom:2px;}
+  .note-snip{font-size:12px; color:var(--muted); line-height:1.4;}
+  .note-meta{font-size:11px; color:var(--muted); margin-top:4px;}
+  .note-del{position:absolute; top:6px; right:6px; background:none; border:none;
+    color:var(--muted); cursor:pointer; font-size:13px;}
+  .note-del:hover{color:#ff7b7b;}
+  #noteView{position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:min(480px,94vw); max-height:84vh; display:flex; flex-direction:column;
+    background:var(--panel); border:1px solid var(--line); color:var(--text);
+    border-radius:14px; box-shadow:0 0 60px rgba(63,169,255,.35); z-index:65; overflow:hidden;}
+  #noteViewBar{display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:10px 14px; border-bottom:1px solid var(--line); font-weight:700; color:var(--blue);}
+  #noteViewBar .winbtns{display:flex; gap:6px;}
+  #noteViewBar button{background:none; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:2px 6px;}
+  #noteViewBar button:hover{color:var(--text);}
+  #noteViewBody{padding:16px 18px; overflow-y:auto; font-size:14px; line-height:1.65;}
+  #noteViewBody img{max-width:100%; border-radius:8px;}
   #galBtn,#btn3d{
     position:fixed; top:18px; z-index:40;
     width:46px; height:46px; border-radius:12px; cursor:pointer;
@@ -340,6 +377,7 @@ window.LUNA3D={THREE,OrbitControls,GLTFLoader};
 </main>
 
 <div id="micTop"><button id="btnMic" title="Start listening">🎤</button></div>
+<button id="notesBtn" title="Notes">📝</button>
 
 <div id="dock">
   <div id="dockBtns">
@@ -386,6 +424,15 @@ window.LUNA3D={THREE,OrbitControls,GLTFLoader};
 <div id="transcript" class="hidden">
   <div id="transcriptHead"><span>TRANSCRIPT</span><button id="transcriptClose" title="Close">✕</button></div>
   <div id="transcriptLog" aria-live="polite"></div>
+</div>
+
+<div id="notesPanel" class="hidden">
+  <div id="notesHead"><span>📝 NOTES</span><button id="notesClose" title="Close">✕</button></div>
+  <div id="notesList"></div>
+</div>
+<div id="noteView" class="hidden">
+  <div id="noteViewBar"><span id="noteViewTitle"></span><span class="winbtns"><button id="noteViewCopy" title="Copy text">📋</button><button id="noteViewClose" title="Close">✕</button></span></div>
+  <div id="noteViewBody"></div>
 </div>
 
 <div id="aboutModal" class="hidden">
@@ -1035,6 +1082,7 @@ function handleCommand(raw){
   if(!text) return;
   addMsg("you",text);
   pushHist("user",text); // every request recorded once, here — handlers must not re-push
+  S.lastCmd=text; // the notes tab snapshots remember what you asked
   S.orbMode="thinking";
   const tl=text.toLowerCase();
   closeDoc(); // the writer window stays up only until the next command
@@ -1080,6 +1128,8 @@ function handleCommand(raw){
       if(await runGen(()=>tryTeach(tl,text))) return done();
       if(await runGen(()=>tryWildcard(tl,text))) return done();
       if(await trySlang(tl,text)) return done();
+      // recipes ("find me a chocolate cake recipe") — walks through step by step
+      if(await runGen(()=>tryRecipe(tl,text))) return done();
       // list-type questions ("what qualities...", "top 5...", "pros and cons...") get a real list
       if(await runGen(()=>tryListAnswer(tl,text))) return done();
       // Wikipedia gets first crack at who/what questions — before any web search
@@ -1167,7 +1217,7 @@ async function trySystem(tl,text){
     return true;
   }
   if(/^(help|what can you do|commands)$/.test(tl)||tl.includes("what can you do")){
-    speak("Here's what I can do. Ask me anything — I can look things up, explain slang, and just chat. Say 'generate an image of' something and I'll draw it and save it to your gallery (say 'use Stable Horde for images' to try the slower engine with different models). Say 'open file' and I'll pop any file into a mini window. I can draft emails in Gmail, open YouTube videos and websites, check the weather, do math, set timers, take notes, and save memories. I can also shop for you — say 'find me a cabin in Estes Park' or 'I want to buy a laptop' and I'll ask your budget and dates, then list the best options. Say 'write an essay about' something and I'll write it in a side window you can copy from — or 'plan me' something and I'll build a plan instead. Ask 'what are the top tech stories today' and I'll write you a news briefing in a side window too. Say 'teach me about' anything and I'll research it and give you a mini-lesson, or say 'surprise me' and I'll pick something fun to actually do. Say 'send an email' and I'll walk you through it step by step — while the email window is open I'm all ears, so just tell me edits, or say hey Luna to drop it and start fresh. One more thing: while I'm working on something, I only listen for my name — say 'hey "+S.aiName+"' to get my attention and I'll stop what I'm doing. You can interrupt me anytime — just say 'hey "+S.aiName+"' while I'm talking.");
+    speak("Here's what I can do. Ask me anything — I can look things up, explain slang, and just chat. Say 'generate an image of' something and I'll draw it and save it to your gallery (say 'use Stable Horde for images' to try the slower engine with different models). Say 'open file' and I'll pop any file into a mini window. I can draft emails in Gmail, open YouTube videos and websites, check the weather, do math, set timers, take notes, and save memories. I can also shop for you — say 'find me a cabin in Estes Park' or 'I want to buy a laptop' and I'll ask your budget and dates, then list the best options. Say 'write an essay about' something and I'll write it in a side window you can copy from — or 'plan me' something and I'll build a plan instead. Ask 'what are the top tech stories today' and I'll write you a news briefing in a side window too. Say 'teach me about' anything and I'll research it and give you a mini-lesson, or say 'surprise me' and I'll pick something fun to actually do. Say 'find me a chocolate cake recipe' and I'll pull one up and walk you through it step by step — say 'save this recipe' to keep it. Everything I show you in a window also lands in my notes tab — tap the 📝 button up top, or say 'open my notes', to browse it all again. Say 'send an email' and I'll walk you through it step by step — while the email window is open I'm all ears, so just tell me edits, or say hey Luna to drop it and start fresh. One more thing: while I'm working on something, I only listen for my name — say 'hey "+S.aiName+"' to get my attention and I'll stop what I'm doing. You can interrupt me anytime — just say 'hey "+S.aiName+"' while I'm talking.");
     return true;
   }
   if(/\bjoke\b/.test(tl)){ speak(JOKES[Math.floor(Math.random()*JOKES.length)]); return true; }
@@ -1199,6 +1249,12 @@ async function tryNotes(tl,text){
     const note=text.match(/(?:take a note|note|remember)(?: that| to)?\s*[:\-]?\s*(.+)/i)[1].trim();
     addMemory(note);
     speak("I'll remember that."); return true;
+  }
+  // the notes tab: every window/card she showed you, saved with its title
+  if(/\b(open|show)\b[^?.!]*\bnotes?\b/.test(tl)&&!/memory|memories/.test(tl)){
+    toggleNotes(true);
+    speak(getNotes().length?"Here's your notes tab — everything I've shown you, newest first.":"Your notes tab is empty for now — everything I show you in a window gets saved here.");
+    return true;
   }
   if(/read( me)? my notes|list( my)? notes|what are my notes|my notes/.test(tl)){
     if(!S.memories.length){ speak("You have no memories saved yet. Say 'remember' followed by what you want me to keep."); }
@@ -2335,6 +2391,92 @@ function tryPersonality(tl,text){
 function smallTalkFallback(){
   loadFail();
 }
+/* ---------------- recipes: find one, walk through it step by step ---------------- */
+function getLunaRecipes(){ try{ return JSON.parse(localStorage.getItem("luna_recipes")||"[]"); }catch(e){ return []; } }
+function setLunaRecipes(r){ try{ localStorage.setItem("luna_recipes",JSON.stringify(r.slice(0,30))); }catch(e){} }
+function parseRecipeSteps(raw){
+  const steps=[];
+  for(const ln of String(raw||"").split(/\r?\n/)){
+    const m=ln.match(/^\s*(?:\d+[.)]\s*|[-*•]\s*)(.+?)\s*$/);
+    if(m&&m[1]&&m[1].length>1) steps.push(m[1].trim());
+  }
+  return steps.slice(0,20);
+}
+function recipeCard(){
+  const steps=S.recipeSteps||[];
+  let h="<b>"+esc(S.recipeName||"Recipe")+"</b> — say <b>next step</b>, <b>previous step</b>, or <b>repeat that step</b>.<ol>";
+  steps.forEach((s,i)=>{ h+="<li"+(i===S.recipeIdx?" style='font-weight:800;color:var(--blue)'":"")+">"+esc(s)+"</li>"; });
+  return h+"</ol>";
+}
+function recipeSay(){
+  const steps=S.recipeSteps||[];
+  if(!steps.length) return;
+  S.recipeIdx=Math.max(0,Math.min(S.recipeIdx,steps.length-1));
+  openDoc("🍰 "+S.recipeName, recipeCard(), S.recipeSteps.map((s,i)=>(i+1)+". "+s).join("\n"), true);
+  speak("Step "+(S.recipeIdx+1)+" of "+steps.length+": "+steps[S.recipeIdx]);
+}
+async function tryRecipe(tl,text){
+  if(/\bcancel( the| my)? timers?\b/.test(tl)) return false; // timers own this
+  // save the open recipe
+  if(/\bsave this recipe\b/.test(tl)){
+    if(!S.recipeSteps||!S.recipeSteps.length){ speak("There's no recipe open to save. Find a recipe first, then say save this recipe."); return true; }
+    const saved=getLunaRecipes(), name=(S.recipeName||"Recipe");
+    const ix=saved.findIndex(r=>String(r.name).toLowerCase()===name.toLowerCase());
+    const rec={name:name,steps:S.recipeSteps};
+    if(ix>=0) saved[ix]=rec; else saved.push(rec);
+    setLunaRecipes(saved);
+    speak("Saved "+name+" to your recipes."); return true;
+  }
+  // list saved recipes
+  if(/\bmy recipes\b|\bshow( me)? (my )?recipes\b|\blist( my)? recipes\b/.test(tl)){
+    const saved=getLunaRecipes();
+    if(!saved.length) speak("You haven't saved any recipes yet. Find a recipe and say save this recipe.");
+    else speak("Your saved recipes: "+saved.map(r=>r.name).join(", ")+". Say open recipe, then the name.");
+    return true;
+  }
+  // open a saved recipe
+  let m=tl.match(/\bopen recipe (.+)/);
+  if(m){
+    const want=m[1].trim().replace(/[.?!,]+$/,"");
+    const rec=getLunaRecipes().find(r=>{ const n=String(r.name).toLowerCase(); return n===want||n.includes(want)||want.includes(n); });
+    if(!rec||!rec.steps||!rec.steps.length){ speak("I couldn't find a saved recipe called "+want+"."); return true; }
+    S.recipeName=rec.name; S.recipeSteps=rec.steps.slice(); S.recipeIdx=0;
+    recipeSay(); return true;
+  }
+  // step navigation while a recipe is open
+  if(S.recipeSteps&&S.recipeSteps.length&&!/recipe/.test(tl)){
+    if(/\bnext step\b|\bcontinue\b/.test(tl)){ S.recipeIdx=Math.min(S.recipeIdx+1,S.recipeSteps.length-1); recipeSay(); return true; }
+    if(/\b(previous step|last step|go back)\b/.test(tl)){ S.recipeIdx=Math.max(S.recipeIdx-1,0); recipeSay(); return true; }
+    if(/\brepeat\b/.test(tl)){ recipeSay(); return true; }
+  }
+  // find a new recipe
+  m=tl.match(/(?:find|get|look up|show me|looking for|tell me)(?: me)? a (.+?) recipe\b/)||tl.match(/\brecipe for (.+)/)||tl.match(/(.+?) recipe$/);
+  if(!m) return false;
+  // never let the wake word or filler verbs leak into the dish name.
+  // looped hard guard: the note title is the dish name ONLY — the raw command
+  // can never leak in, even if speech recognition doubles up filler words.
+  let dish=m[1].trim().replace(/[.?!,]+$/,"").replace(/^(?:hey\s+)?(?:luna|solar)\s+/i,"").trim();
+  for(let gi=0;gi<4;gi++){
+    const nn=dish.replace(/^(?:please\s+)?(?:can\s+you\s+|could\s+you\s+)?(?:tell\s+me\s+|find\s+(?:me\s+)?|get\s+(?:me\s+)?|show\s+me\s+|look\s+up\s+|looking\s+for\s+|search\s+(?:for\s+)?)(?:a\s+|an\s+|the\s+|me\s+|my\s+)?/i,"").trim();
+    if(nn===dish) break; dish=nn;
+  }
+  if(!dish||dish.length<2) return false;
+  if(!needWeb()) return true;
+  setSubtitle("Finding a "+dish+" recipe…"); S.orbMode="thinking";
+  try{
+    const raw=await brainRaw(
+      "Give a simple home recipe for "+dish.slice(0,80)+". Reply with ONLY numbered steps, one per line like \"1. ...\". No title, no intro, no outro, no ingredient list, at most 10 steps.",
+      "You are a recipe writer. Output only numbered steps, one per line.", 25000);
+    const steps=parseRecipeSteps(raw);
+    if(!steps.length) throw 0;
+    S.recipeName=dish.replace(/\w\S*/g,w=>w.charAt(0).toUpperCase()+w.slice(1));
+    S.recipeSteps=steps; S.recipeIdx=0;
+    speak("Here's "+S.recipeName+" — the full recipe is in the window, and I'll walk you through it. Say save this recipe if you'd like to keep it.");
+    recipeSay();
+  }catch(e){ S.orbMode="idle"; speak("I couldn't pull up a recipe for that just now. Try asking again."); }
+  return true;
+}
+
 /* ---------------- list answers: questions that deserve a list get a list ---------------- */
 function isListQuestion(tl){
   if(/\blist\b/.test(tl)&&/^(list|give|make|show|name|write)\b/.test(tl)) return true;
@@ -2944,9 +3086,62 @@ function openDoc(title, html, raw, keep){
   $("docBody").scrollTop=0;
 }
 function closeDoc(){ const w=$("docWin"); if(w&&!w.classList.contains("hidden")) w.classList.add("hidden"); }
-$("docClose").onclick=closeDoc;
 $("docCopy").onclick=async()=>{
   try{ await navigator.clipboard.writeText(S.docText||""); speak("Copied."); }
+  catch(e){ speak("Copy was blocked — select the text in the window and copy it manually."); }
+};
+
+/* ---------------- notes tab: every window/card auto-saves a snapshot ---------------- */
+function getNotes(){ try{ return JSON.parse(localStorage.getItem("luna_notes")||"[]"); }catch(e){ return []; } }
+function setNotes(n){ try{ localStorage.setItem("luna_notes",JSON.stringify(n.slice(0,40))); }catch(e){} }
+function noteSnap(title,html){
+  if(!title||!html||html.length<10) return;
+  if(/Popup test|Drafting|Generating/.test(title+html)) return;
+  const notes=getNotes();
+  notes.unshift({q:S.lastCmd||"",title:title,html:html,ts:Date.now()});
+  setNotes(notes);
+  renderNotesPanel();
+}
+// wrap the window openers so everything she shows you lands in the notes tab
+const _openDoc=openDoc, _openMini=openMini, _showAnswerCard=showAnswerCard;
+openDoc=function(t,h,r,k){ noteSnap(t,h); _openDoc(t,h,r,k); };
+openMini=function(t,h,s,k){ noteSnap(t,h); _openMini(t,h,s,k); };
+showAnswerCard=function(o){ if(o&&o.title) noteSnap(o.title,(o.image?'<img src="'+o.image+'" alt="">':"")+"<p>"+esc(o.text||"")+"</p>"); _showAnswerCard(o); };
+function toggleNotes(force){
+  const p=$("notesPanel");
+  const open=force!==undefined?force:p.classList.contains("hidden");
+  p.classList.toggle("hidden",!open);
+  if(open) renderNotesPanel();
+}
+function timeAgo(ts){ const m=Math.floor((Date.now()-ts)/60000); if(m<1) return "just now"; if(m<60) return m+"m ago"; const h=Math.floor(m/60); if(h<24) return h+"h ago"; return Math.floor(h/24)+"d ago"; }
+function renderNotesPanel(){
+  const box=$("notesList"); if(!box) return; box.innerHTML="";
+  const notes=getNotes();
+  if(!notes.length){ box.innerHTML='<div class="empty">Nothing here yet. Ask me something and I\'ll keep it here for you.</div>'; return; }
+  notes.forEach((n,i)=>{
+    const row=document.createElement("div"); row.className="note-row";
+    const tmp=document.createElement("div"); tmp.innerHTML=n.html; const txt=(tmp.textContent||"").slice(0,90);
+    row.innerHTML='<div class="note-title">'+esc(n.title)+'</div><div class="note-snip">'+esc(txt)+(txt.length>=90?"\u2026":"")+'</div><div class="note-meta">'+timeAgo(n.ts)+'</div>';
+    const del=document.createElement("button"); del.className="note-del"; del.textContent="\u2715"; del.title="Delete";
+    del.onclick=(e)=>{ e.stopPropagation(); const nn=getNotes(); nn.splice(i,1); setNotes(nn); renderNotesPanel(); };
+    row.appendChild(del);
+    row.onclick=()=>{ openNoteView(n); };
+    box.appendChild(row);
+  });
+}
+function openNoteView(n){
+  $("noteViewTitle").textContent=n.title;
+  $("noteViewBody").innerHTML=n.html;
+  $("noteView").classList.remove("hidden");
+  toggleNotes(false);
+}
+function closeNoteView(){ $("noteView").classList.add("hidden"); }
+$("notesBtn").onclick=()=>toggleNotes();
+$("notesClose").onclick=()=>toggleNotes(false);
+$("noteViewClose").onclick=closeNoteView;
+$("noteViewCopy").onclick=async()=>{
+  const t=$("noteViewBody").textContent||"";
+  try{ await navigator.clipboard.writeText(t); speak("Copied."); }
   catch(e){ speak("Copy was blocked — select the text in the window and copy it manually."); }
 };
 async function tryWriter(tl,text){
